@@ -338,77 +338,121 @@ export default function QuizFlow() {
                   )}
                 </div>
 
-                {/* Answer row: label - bubbles - label */}
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: isMobile ? 8 : 14,
-                }}>
-                  <span style={{
-                    fontSize: isMobile ? 10 : 12,
-                    color: SEA_GREEN,
-                    fontWeight: 600,
-                    minWidth: isMobile ? 54 : 72,
-                    textAlign: 'right',
-                    lineHeight: 1.3,
-                    flexShrink: 0,
-                  }}>
-                    人に教えられる
-                  </span>
-
+                {/* Answer row */}
+                {skill.course_id === 'academia' && skill.name === 'JSTQB FL 合格' ? (
+                  /* Binary choice for JSTQB certification */
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: isMobile ? 10 : 16,
+                    justifyContent: 'center',
+                    gap: isMobile ? 12 : 20,
                   }}>
-                    {bubbleConfig.map((b) => {
-                      const isSelected = selectedScore === b.score;
-                      const hoverKey = `${skill.id}-${b.score}`;
+                    {[
+                      { score: 5, label: '合格', color: SEA_GREEN },
+                      { score: 1, label: 'まだ', color: CYAN },
+                    ].map((opt) => {
+                      const isSelected = selectedScore === opt.score;
+                      const hoverKey = `${skill.id}-${opt.score}`;
                       const isHovered = hoveredBubble === hoverKey;
-                      const sz = isMobile ? b.mobileSz : b.size;
-
                       return (
                         <button
-                          key={b.score}
-                          onClick={() => handleSelect(skill.id, b.score)}
+                          key={opt.score}
+                          onClick={() => handleSelect(skill.id, opt.score)}
                           onMouseEnter={() => setHoveredBubble(hoverKey)}
                           onMouseLeave={() => setHoveredBubble(null)}
                           style={{
-                            width: sz,
-                            height: sz,
-                            borderRadius: '50%',
-                            border: `2px solid ${isSelected ? b.color : isHovered ? b.color : '#ddd'}`,
-                            background: isSelected
-                              ? b.color
-                              : isHovered
-                                ? `${b.color}20`
-                                : 'transparent',
+                            padding: isMobile ? '10px 28px' : '12px 40px',
+                            fontSize: isMobile ? 14 : 16,
+                            fontWeight: 700,
+                            color: isSelected ? '#fff' : opt.color,
+                            background: isSelected ? opt.color : isHovered ? `${opt.color}15` : 'transparent',
+                            border: `2px solid ${isSelected || isHovered ? opt.color : '#ddd'}`,
+                            borderRadius: 999,
                             cursor: 'pointer',
                             transition: 'all 0.15s ease',
-                            padding: 0,
                             outline: 'none',
-                            flexShrink: 0,
-                            transform: isHovered && !isSelected ? 'scale(1.1)' : 'scale(1)',
+                            transform: isHovered && !isSelected ? 'scale(1.05)' : 'scale(1)',
                           }}
-                          aria-label={`スコア ${b.score}`}
-                        />
+                          aria-label={opt.label}
+                        >
+                          {opt.label}
+                        </button>
                       );
                     })}
                   </div>
-
-                  <span style={{
-                    fontSize: isMobile ? 10 : 12,
-                    color: CYAN,
-                    fontWeight: 600,
-                    minWidth: isMobile ? 54 : 72,
-                    textAlign: 'left',
-                    lineHeight: 1.3,
-                    flexShrink: 0,
+                ) : (
+                  /* Standard 5-bubble scale */
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: isMobile ? 8 : 14,
                   }}>
-                    興味はある
-                  </span>
-                </div>
+                    <span style={{
+                      fontSize: isMobile ? 10 : 12,
+                      color: SEA_GREEN,
+                      fontWeight: 600,
+                      minWidth: isMobile ? 54 : 72,
+                      textAlign: 'right',
+                      lineHeight: 1.3,
+                      flexShrink: 0,
+                    }}>
+                      人に教えられる
+                    </span>
+
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: isMobile ? 10 : 16,
+                    }}>
+                      {bubbleConfig.map((b) => {
+                        const isSelected = selectedScore === b.score;
+                        const hoverKey = `${skill.id}-${b.score}`;
+                        const isHovered = hoveredBubble === hoverKey;
+                        const sz = isMobile ? b.mobileSz : b.size;
+
+                        return (
+                          <button
+                            key={b.score}
+                            onClick={() => handleSelect(skill.id, b.score)}
+                            onMouseEnter={() => setHoveredBubble(hoverKey)}
+                            onMouseLeave={() => setHoveredBubble(null)}
+                            style={{
+                              width: sz,
+                              height: sz,
+                              borderRadius: '50%',
+                              border: `2px solid ${isSelected ? b.color : isHovered ? b.color : '#ddd'}`,
+                              background: isSelected
+                                ? b.color
+                                : isHovered
+                                  ? `${b.color}20`
+                                  : 'transparent',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              padding: 0,
+                              outline: 'none',
+                              flexShrink: 0,
+                              transform: isHovered && !isSelected ? 'scale(1.1)' : 'scale(1)',
+                            }}
+                            aria-label={`スコア ${b.score}`}
+                          />
+                        );
+                      })}
+                    </div>
+
+                    <span style={{
+                      fontSize: isMobile ? 10 : 12,
+                      color: CYAN,
+                      fontWeight: 600,
+                      minWidth: isMobile ? 54 : 72,
+                      textAlign: 'left',
+                      lineHeight: 1.3,
+                      flexShrink: 0,
+                    }}>
+                      興味はある
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           );
