@@ -12,13 +12,13 @@ const SEA_GREEN = '#50DAB0';
 const MAGENTA = '#E21776';
 const GRADIENT = 'linear-gradient(135deg, #50DAB0, #3DB7E4)';
 
-// Bubble config: score 5 (left) to score 1 (right)
+// Bubble config: score 1 (left/small) to score 5 (right/large)
 const bubbleConfig = [
-  { score: 5, size: 44, mobileSz: 36, color: SEA_GREEN },
-  { score: 4, size: 36, mobileSz: 30, color: '#6FCFB8' },
-  { score: 3, size: 28, mobileSz: 24, color: '#999' },
-  { score: 2, size: 36, mobileSz: 30, color: '#6CBCDA' },
-  { score: 1, size: 44, mobileSz: 36, color: CYAN },
+  { score: 1, size: 28, mobileSz: 22, color: CYAN },
+  { score: 2, size: 32, mobileSz: 26, color: '#6CBCDA' },
+  { score: 3, size: 36, mobileSz: 30, color: '#999' },
+  { score: 4, size: 40, mobileSz: 34, color: '#6FCFB8' },
+  { score: 5, size: 44, mobileSz: 38, color: SEA_GREEN },
 ];
 
 export default function QuizFlow() {
@@ -188,19 +188,19 @@ export default function QuizFlow() {
             </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 11, color: SEA_GREEN, fontWeight: 600 }}>人に教えられる</span>
+            <span style={{ fontSize: 11, color: CYAN, fontWeight: 600 }}>興味はある</span>
             <div style={{ display: 'flex', gap: 3 }}>
               {bubbleConfig.map((b) => (
                 <div key={b.score} style={{
-                  width: b.score === 3 ? 6 : 8,
-                  height: b.score === 3 ? 6 : 8,
+                  width: Math.max(4, b.size / 6),
+                  height: Math.max(4, b.size / 6),
                   borderRadius: '50%',
                   background: b.color,
                   opacity: 0.6,
                 }} />
               ))}
             </div>
-            <span style={{ fontSize: 11, color: CYAN, fontWeight: 600 }}>興味はある</span>
+            <span style={{ fontSize: 11, color: SEA_GREEN, fontWeight: 600 }}>人に教えられる</span>
           </div>
         </div>
       </div>
@@ -365,14 +365,14 @@ export default function QuizFlow() {
                   }}>
                     <span style={{
                       fontSize: isMobile ? 10 : 12,
-                      color: SEA_GREEN,
+                      color: CYAN,
                       fontWeight: 600,
                       minWidth: isMobile ? 54 : 72,
                       textAlign: 'right',
                       lineHeight: 1.3,
                       flexShrink: 0,
                     }}>
-                      人に教えられる
+                      興味はある
                     </span>
 
                     <div style={{
@@ -417,14 +417,14 @@ export default function QuizFlow() {
 
                     <span style={{
                       fontSize: isMobile ? 10 : 12,
-                      color: CYAN,
+                      color: SEA_GREEN,
                       fontWeight: 600,
                       minWidth: isMobile ? 54 : 72,
                       textAlign: 'left',
                       lineHeight: 1.3,
                       flexShrink: 0,
                     }}>
-                      興味はある
+                      人に教えられる
                     </span>
                   </div>
                 )}
