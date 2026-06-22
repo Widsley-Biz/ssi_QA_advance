@@ -1,73 +1,160 @@
-import { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useAuth } from '../context/AuthContext';
-import { courses, skills, levels, assessments, answers, profiles, teams } from '../data/mockData';
+import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels } from '../lib/data';
 import { calcRate, calcReachedLevel } from '../lib/score';
+import type { Profile, Team, Course, Skill, Level, Assessment, Answer } from '../types';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
 const SHADES = ['#50DAB0', '#3DB7E4', '#03202F', '#E21776'];
 
+interface ScoreRow {
+  id: string;
+  name: string;
+  teamName: string;
+  courseRates: Record<string, { rate: number; level: string }>;
+  lastSubmitted: string;
+}
+
 export default function BoardView() {
   const { user } = useAuth();
-  const [selectedCourse, setSelectedCourse] = useState(courses[0]?.id ?? '');
+
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [answersMap, setAnswersMap] = useState<Record<number, Answer[]>>({});
+
+  const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<number | 'all'>('all');
+
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [c, t, p, s, l, a] = await Promise.all([
+        fetchCourses(),
+        fetchTeams(),
+        fetchProfiles(),
+        fetchSkills(),
+        fetchLevels(),
+        fetchAssessments(),
+      ]);
+      setCourses(c);
+      setTeams(t);
+      setProfiles(p); // already excludes retired in data layer
+      setSkills(s);
+      setLevels(l);
+      setAssessments(a);
+
+      if (c.length > 0 && !selectedCourse) {
+        setSelectedCourse(c[0].id);
+      }
+
+      // Load answers for all submitted assessments
+      const submitted = a.filter(as => as.status === 'submitted');
+      const ansMap: Record<number, Answer[]> = {};
+      await Promise.all(
+        submitted.map(async (as) => {
+          ansMap[as.id] = await fetchAnswers(as.id);
+        })
+      );
+      setAnswersMap(ansMap);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (!user || user.role !== 'board') {
     return <div style={styles.container}><p>アクセス権限がありません</p></div>;
   }
 
-  const course = courses.find((c) => c.id === selectedCourse);
-  const courseSkills = skills.filter((s) => s.course_id === selectedCourse);
-  const courseLevels = levels.filter((l) => l.course_id === selectedCourse);
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.content}>
+          <div style={styles.loadingBox}>
+            <div style={styles.spinner} />
+            <p style={{ color: '#999', marginTop: 12 }}>読み込み中...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const filteredProfiles = selectedTeam === 'all'
     ? profiles
-    : profiles.filter((p) => p.team_id === selectedTeam);
+    : profiles.filter(p => p.team_id === selectedTeam);
 
-  const scoreRows = filteredProfiles.map((p) => {
-    const latestSubmitted = assessments
-      .filter((a) => a.user_id === p.id && a.course_id === selectedCourse && a.status === 'submitted')
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+  const activeCourse = courses.find(c => c.id === selectedCourse);
 
-    const pAnswers = latestSubmitted
-      ? answers.filter((a) => a.assessment_id === latestSubmitted.id)
-      : [];
+  // Build score rows
+  const scoreRows: ScoreRow[] = filteredProfiles.map((p) => {
+    const team = teams.find(t => t.id === p.team_id);
+    const courseRates: ScoreRow['courseRates'] = {};
+    let latestDate = '';
 
-    const { rate } = calcRate(courseSkills, pAnswers);
-    const reachedLevel = course?.type === 'leveled'
-      ? calcReachedLevel(courseLevels, courseSkills, pAnswers)
-      : '-';
-    const team = teams.find((t) => t.id === p.team_id);
+    for (const course of courses) {
+      const courseSkills = skills.filter(s => s.course_id === course.id);
+      const courseLevels = levels.filter(l => l.course_id === course.id);
+
+      const latestSubmitted = assessments
+        .filter(a => a.user_id === p.id && a.course_id === course.id && a.status === 'submitted')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+
+      const pAnswers = latestSubmitted ? (answersMap[latestSubmitted.id] ?? []) : [];
+      const { rate } = calcRate(courseSkills, pAnswers);
+      const reachedLevel = course.type === 'leveled'
+        ? calcReachedLevel(courseLevels, courseSkills, pAnswers)
+        : '-';
+
+      courseRates[course.id] = { rate, level: reachedLevel };
+
+      if (latestSubmitted?.submitted_at) {
+        if (!latestDate || new Date(latestSubmitted.submitted_at) > new Date(latestDate)) {
+          latestDate = latestSubmitted.submitted_at;
+        }
+      }
+    }
 
     return {
       id: p.id,
       name: p.display_name,
-      team: team?.name ?? '-',
-      role: p.role,
-      level: reachedLevel,
-      rate,
-      submitted: latestSubmitted?.submitted_at
-        ? new Date(latestSubmitted.submitted_at).toLocaleDateString('ja-JP')
+      teamName: team?.name ?? '-',
+      courseRates,
+      lastSubmitted: latestDate
+        ? new Date(latestDate).toLocaleDateString('ja-JP')
         : '未提出',
     };
   });
 
-  const levelDistribution = course?.type === 'leveled'
+  // Level distribution for selected course
+  const levelDistribution = activeCourse?.type === 'leveled'
     ? (() => {
+        const courseLevels = levels.filter(l => l.course_id === selectedCourse);
+        const courseSkills = skills.filter(s => s.course_id === selectedCourse);
         const levelNames = courseLevels
-          .filter((l) => l.kind === 'level')
+          .filter(l => l.kind === 'level')
           .sort((a, b) => a.sort_order - b.sort_order)
-          .map((l) => l.name);
+          .map(l => l.name);
         const dist: Record<string, number> = { '未到達': 0 };
-        levelNames.forEach((n) => { dist[n] = 0; });
+        levelNames.forEach(n => { dist[n] = 0; });
 
         filteredProfiles.forEach((p) => {
-          const sub = assessments.find(
-            (a) => a.user_id === p.id && a.course_id === selectedCourse && a.status === 'submitted'
-          );
-          const pAns = sub ? answers.filter((a) => a.assessment_id === sub.id) : [];
+          const latestSubmitted = assessments
+            .filter(a => a.user_id === p.id && a.course_id === selectedCourse && a.status === 'submitted')
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+          const pAns = latestSubmitted ? (answersMap[latestSubmitted.id] ?? []) : [];
           const reached = calcReachedLevel(courseLevels, courseSkills, pAns);
           dist[reached] = (dist[reached] || 0) + 1;
         });
@@ -76,13 +163,15 @@ export default function BoardView() {
       })()
     : [];
 
+  // Team average rates for selected course
   const teamAvgData = teams.map((team) => {
-    const members = profiles.filter((p) => p.team_id === team.id);
-    const rates = members.map((m) => {
-      const sub = assessments.find(
-        (a) => a.user_id === m.id && a.course_id === selectedCourse && a.status === 'submitted'
-      );
-      const mAns = sub ? answers.filter((a) => a.assessment_id === sub.id) : [];
+    const members = profiles.filter(p => p.team_id === team.id);
+    const courseSkills = skills.filter(s => s.course_id === selectedCourse);
+    const rates = members.map(m => {
+      const latestSubmitted = assessments
+        .filter(a => a.user_id === m.id && a.course_id === selectedCourse && a.status === 'submitted')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+      const mAns = latestSubmitted ? (answersMap[latestSubmitted.id] ?? []) : [];
       return calcRate(courseSkills, mAns).rate;
     });
     const avg = rates.length > 0 ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : 0;
@@ -102,7 +191,7 @@ export default function BoardView() {
               onChange={(e) => setSelectedCourse(e.target.value)}
               style={styles.select}
             >
-              {courses.map((c) => (
+              {courses.map(c => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
             </select>
@@ -115,7 +204,7 @@ export default function BoardView() {
               style={styles.select}
             >
               <option value="all">全チーム</option>
-              {teams.map((t) => (
+              {teams.map(t => (
                 <option key={t.id} value={t.id}>{t.name}</option>
               ))}
             </select>
@@ -126,46 +215,84 @@ export default function BoardView() {
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>全社得点一覧</h2>
           <div style={{ overflowX: 'auto' }}>
-            <table>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th>氏名</th>
-                  <th>チーム</th>
-                  <th>ロール</th>
-                  {course?.type === 'leveled' && <th>到達レベル</th>}
-                  <th>達成率</th>
-                  <th>最終提出日</th>
+                  <th style={styles.th}>氏名</th>
+                  <th style={styles.th}>チーム</th>
+                  {courses.map(c => (
+                    <th key={c.id} style={styles.th} colSpan={c.type === 'leveled' ? 2 : 1}>
+                      {c.name}
+                    </th>
+                  ))}
+                  <th style={styles.th}>最終提出日</th>
+                </tr>
+                <tr>
+                  <th style={styles.thSub}></th>
+                  <th style={styles.thSub}></th>
+                  {courses.map(c => (
+                    c.type === 'leveled' ? (
+                      <React.Fragment key={c.id}>
+                        <th style={styles.thSub}>達成率</th>
+                        <th style={styles.thSub}>レベル</th>
+                      </React.Fragment>
+                    ) : (
+                      <th key={c.id} style={styles.thSub}>達成率</th>
+                    )
+                  ))}
+                  <th style={styles.thSub}></th>
                 </tr>
               </thead>
               <tbody>
-                {scoreRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.name}</td>
-                    <td>{row.team}</td>
-                    <td>{row.role}</td>
-                    {course?.type === 'leveled' && (
-                      <td>
-                        <span style={styles.levelBadge}>{row.level}</span>
-                      </td>
-                    )}
-                    <td>
-                      <div style={styles.rateCell}>
-                        <div style={styles.rateBar}>
-                          <div style={{ ...styles.rateBarFill, width: `${row.rate}%` }} />
-                        </div>
-                        <span style={styles.rateText}>{row.rate}%</span>
-                      </div>
+                {scoreRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={99} style={{ textAlign: 'center', color: '#999', padding: 24 }}>
+                      データがありません
                     </td>
-                    <td>{row.submitted}</td>
                   </tr>
-                ))}
+                ) : (
+                  scoreRows.map((row) => (
+                    <tr key={row.id} style={styles.tr}>
+                      <td style={{ ...styles.td, fontWeight: 600, color: DEEP_BLUE }}>{row.name}</td>
+                      <td style={styles.td}>{row.teamName}</td>
+                      {courses.map(c => {
+                        const cr = row.courseRates[c.id];
+                        return c.type === 'leveled' ? (
+                          <React.Fragment key={c.id}>
+                            <td style={styles.td}>
+                              <div style={styles.rateCell}>
+                                <div style={styles.rateBar}>
+                                  <div style={{ ...styles.rateBarFill, width: `${cr?.rate ?? 0}%` }} />
+                                </div>
+                                <span style={styles.rateText}>{cr?.rate ?? 0}%</span>
+                              </div>
+                            </td>
+                            <td style={styles.td}>
+                              <span style={styles.levelBadge}>{cr?.level ?? '-'}</span>
+                            </td>
+                          </React.Fragment>
+                        ) : (
+                          <td key={c.id} style={styles.td}>
+                            <div style={styles.rateCell}>
+                              <div style={styles.rateBar}>
+                                <div style={{ ...styles.rateBarFill, width: `${cr?.rate ?? 0}%` }} />
+                              </div>
+                              <span style={styles.rateText}>{cr?.rate ?? 0}%</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                      <td style={styles.td}>{row.lastSubmitted}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
         <div style={styles.chartsRow}>
-          {course?.type === 'leveled' && levelDistribution.length > 0 && (
+          {activeCourse?.type === 'leveled' && levelDistribution.length > 0 && (
             <div style={{ ...styles.section, flex: 1 }}>
               <h2 style={styles.sectionTitle}>レベル別人数サマリー</h2>
               <ResponsiveContainer width="100%" height={220}>
@@ -237,6 +364,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: DEEP_BLUE,
     marginBottom: 20,
   },
+  loadingBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 200,
+  },
+  spinner: {
+    width: 32,
+    height: 32,
+    border: `3px solid #eee`,
+    borderTop: `3px solid ${CYAN}`,
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
+  },
   filterRow: {
     display: 'flex',
     gap: 20,
@@ -274,6 +416,34 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 20,
     flexWrap: 'wrap' as const,
   },
+  th: {
+    padding: '12px 14px',
+    textAlign: 'left' as const,
+    fontSize: 13,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    borderBottom: '2px solid #eee',
+    background: '#fafbfc',
+    whiteSpace: 'nowrap' as const,
+  },
+  thSub: {
+    padding: '6px 14px',
+    textAlign: 'left' as const,
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#999',
+    borderBottom: '1px solid #eee',
+    background: '#fafbfc',
+  },
+  tr: {
+    borderBottom: '1px solid #f0f0f0',
+  },
+  td: {
+    padding: '10px 14px',
+    fontSize: 13,
+    color: '#333',
+    whiteSpace: 'nowrap' as const,
+  },
   levelBadge: {
     fontSize: 12,
     fontWeight: 700,
@@ -281,6 +451,7 @@ const styles: Record<string, React.CSSProperties> = {
     color: CYAN,
     padding: '3px 10px',
     borderRadius: 8,
+    display: 'inline-block',
   },
   rateCell: {
     display: 'flex',
@@ -288,7 +459,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
   },
   rateBar: {
-    width: 80,
+    width: 60,
     height: 6,
     background: '#eee',
     borderRadius: 3,

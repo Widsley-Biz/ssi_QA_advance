@@ -1,131 +1,289 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { courses, skills, levels, assessments, answers, profiles, teams } from '../data/mockData';
+import { fetchProfiles, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, deleteAssessment } from '../lib/data';
 import { calcRate, calcReachedLevel } from '../lib/score';
+import type { Profile, Course, Skill, Level, Assessment, Answer } from '../types';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
 
+interface MemberRow {
+  id: string;
+  name: string;
+  courseRates: Record<string, { rate: number; level: string; lastDate: string; assessmentId: number | null }>;
+}
+
 export default function LeaderView() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [selectedCourse, setSelectedCourse] = useState(courses[0]?.id ?? '');
+
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [answersMap, setAnswersMap] = useState<Record<number, Answer[]>>({});
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const loadData = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+    try {
+      const [c, p, s, l, a] = await Promise.all([
+        fetchCourses(),
+        fetchProfiles(user.team_id ?? undefined),
+        fetchSkills(),
+        fetchLevels(),
+        fetchAssessments(),
+      ]);
+      setCourses(c);
+      // Only show members from leader's own team
+      setProfiles(p.filter(pr => pr.team_id === user.team_id && pr.role === 'member'));
+      setSkills(s);
+      setLevels(l);
+      // Filter assessments to team members only
+      const teamMemberIds = new Set(p.filter(pr => pr.team_id === user.team_id).map(pr => pr.id));
+      const teamAssessments = a.filter(as => teamMemberIds.has(as.user_id));
+      setAssessments(teamAssessments);
+
+      // Load answers for all submitted assessments
+      const submittedAssessments = teamAssessments.filter(as => as.status === 'submitted');
+      const ansMap: Record<number, Answer[]> = {};
+      await Promise.all(
+        submittedAssessments.map(async (as) => {
+          ansMap[as.id] = await fetchAnswers(as.id);
+        })
+      );
+      setAnswersMap(ansMap);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (!user || (user.role !== 'leader' && user.role !== 'board')) {
     return <div style={styles.container}><p>アクセス権限がありません</p></div>;
   }
 
-  const team = teams.find((t) => t.id === user.team_id);
-  const teamMembers = profiles.filter((p) => p.team_id === user.team_id && p.role === 'member');
-  const course = courses.find((c) => c.id === selectedCourse);
-  const courseSkills = skills.filter((s) => s.course_id === selectedCourse);
-  const courseLevels = levels.filter((l) => l.course_id === selectedCourse);
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.content}>
+          <div style={styles.loadingBox}>
+            <div style={styles.spinner} />
+            <p style={{ color: '#999', marginTop: 12 }}>読み込み中...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-  const memberRows = teamMembers.map((member) => {
-    const latestSubmitted = assessments
-      .filter((a) => a.user_id === member.id && a.course_id === selectedCourse && a.status === 'submitted')
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+  // Build member rows with per-course data
+  const memberRows: MemberRow[] = profiles.map((member) => {
+    const courseRates: MemberRow['courseRates'] = {};
+    for (const course of courses) {
+      const courseSkills = skills.filter(s => s.course_id === course.id);
+      const courseLevels = levels.filter(l => l.course_id === course.id);
 
-    const memberAnswers = latestSubmitted
-      ? answers.filter((a) => a.assessment_id === latestSubmitted.id)
-      : [];
+      const latestSubmitted = assessments
+        .filter(a => a.user_id === member.id && a.course_id === course.id && a.status === 'submitted')
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
-    const { rate } = calcRate(courseSkills, memberAnswers);
-    const reachedLevel = course?.type === 'leveled'
-      ? calcReachedLevel(courseLevels, courseSkills, memberAnswers)
-      : '-';
+      const memberAnswers = latestSubmitted ? (answersMap[latestSubmitted.id] ?? []) : [];
+      const { rate } = calcRate(courseSkills, memberAnswers);
+      const reachedLevel = course.type === 'leveled'
+        ? calcReachedLevel(courseLevels, courseSkills, memberAnswers)
+        : '-';
 
-    return {
-      id: member.id,
-      name: member.display_name,
-      level: reachedLevel,
-      rate,
-      lastUpdate: latestSubmitted?.submitted_at
-        ? new Date(latestSubmitted.submitted_at).toLocaleDateString('ja-JP')
-        : '未提出',
-    };
+      courseRates[course.id] = {
+        rate,
+        level: reachedLevel,
+        lastDate: latestSubmitted?.submitted_at
+          ? new Date(latestSubmitted.submitted_at).toLocaleDateString('ja-JP')
+          : '未提出',
+        assessmentId: latestSubmitted?.id ?? null,
+      };
+    }
+    return { id: member.id, name: member.display_name, courseRates };
   });
 
-  const avgRate = memberRows.length > 0
-    ? Math.round(memberRows.reduce((sum, r) => sum + r.rate, 0) / memberRows.length)
-    : 0;
+  const handleDelete = async (assessmentId: number, memberName: string) => {
+    if (!confirm(`${memberName} の提出履歴を削除しますか？この操作は取り消せません。`)) return;
+    const key = `${assessmentId}`;
+    setDeleting(key);
+    try {
+      await deleteAssessment(assessmentId);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to delete:', err);
+      alert('削除に失敗しました');
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  const avgRates: Record<string, number> = {};
+  for (const course of courses) {
+    const rates = memberRows.map(r => r.courseRates[course.id]?.rate ?? 0);
+    avgRates[course.id] = rates.length > 0
+      ? Math.round(rates.reduce((s, r) => s + r, 0) / rates.length)
+      : 0;
+  }
 
   return (
     <div style={styles.container}>
       <div style={styles.content}>
-        <h1 style={styles.title}>{team?.name} - チームビュー</h1>
-
-        <div style={styles.filterRow}>
-          <label style={styles.filterLabel}>コース:</label>
-          <select
-            value={selectedCourse}
-            onChange={(e) => setSelectedCourse(e.target.value)}
-            style={styles.select}
-          >
-            {courses.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
+        <h1 style={styles.title}>チームビュー</h1>
 
         <div style={styles.statsBar}>
           <div style={styles.stat}>
-            <div style={styles.statValue}>{teamMembers.length}</div>
+            <div style={styles.statValue}>{profiles.length}</div>
             <div style={styles.statLabel}>メンバー数</div>
           </div>
-          <div style={styles.stat}>
-            <div style={styles.statValue}>{avgRate}%</div>
-            <div style={styles.statLabel}>チーム平均達成率</div>
-          </div>
+          {courses.map(c => (
+            <div key={c.id} style={styles.stat}>
+              <div style={styles.statValue}>{avgRates[c.id]}%</div>
+              <div style={styles.statLabel}>{c.name} 平均</div>
+            </div>
+          ))}
         </div>
 
         <div style={styles.tableWrapper}>
-          <table>
-            <thead>
-              <tr>
-                <th>メンバー名</th>
-                <th>現在レベル</th>
-                <th>達成率(%)</th>
-                <th>最終更新日</th>
-              </tr>
-            </thead>
-            <tbody>
-              {memberRows.length === 0 ? (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
                 <tr>
-                  <td colSpan={4} style={{ textAlign: 'center', color: '#999' }}>
-                    データがありません
-                  </td>
+                  <th style={styles.th}>メンバー名</th>
+                  {courses.map(c => (
+                    <th key={c.id} style={styles.th} colSpan={c.type === 'leveled' ? 2 : 1}>
+                      {c.name}
+                    </th>
+                  ))}
+                  <th style={styles.th}>最終提出日</th>
+                  <th style={styles.th}>操作</th>
                 </tr>
-              ) : (
-                memberRows.map((row) => (
-                  <tr
-                    key={row.id}
-                    onClick={() => navigate(`/course/${selectedCourse}/dashboard/${row.id}`)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td>{row.name}</td>
-                    <td>
-                      <span style={styles.levelBadge}>{row.level}</span>
+                <tr>
+                  <th style={styles.thSub}></th>
+                  {courses.map(c => (
+                    c.type === 'leveled' ? (
+                      <React.Fragment key={c.id}>
+                        <th style={styles.thSub}>達成率</th>
+                        <th style={styles.thSub}>レベル</th>
+                      </React.Fragment>
+                    ) : (
+                      <th key={c.id} style={styles.thSub}>達成率</th>
+                    )
+                  ))}
+                  <th style={styles.thSub}></th>
+                  <th style={styles.thSub}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {memberRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={99} style={{ textAlign: 'center', color: '#999', padding: 24 }}>
+                      データがありません
                     </td>
-                    <td>
-                      <div style={styles.rateBar}>
-                        <div style={{ ...styles.rateBarFill, width: `${row.rate}%` }} />
-                      </div>
-                      <span style={styles.rateText}>{row.rate}%</span>
-                    </td>
-                    <td>{row.lastUpdate}</td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  memberRows.map((row) => {
+                    // Find the most recent submission date across all courses
+                    const lastDates = courses
+                      .map(c => row.courseRates[c.id]?.lastDate)
+                      .filter(d => d && d !== '未提出');
+                    const lastDate = lastDates.length > 0 ? lastDates[0] : '未提出';
+
+                    // Find any deletable assessment (most recent submitted)
+                    const deletableAssessment = courses
+                      .map(c => row.courseRates[c.id])
+                      .find(cr => cr?.assessmentId != null);
+
+                    return (
+                      <tr key={row.id} style={styles.tr}>
+                        <td
+                          style={{ ...styles.td, cursor: 'pointer', fontWeight: 600, color: DEEP_BLUE }}
+                          onClick={() => {
+                            const firstCourse = courses[0];
+                            if (firstCourse) navigate(`/course/${firstCourse.id}/dashboard/${row.id}`);
+                          }}
+                        >
+                          {row.name}
+                        </td>
+                        {courses.map(c => {
+                          const cr = row.courseRates[c.id];
+                          return c.type === 'leveled' ? (
+                            <React.Fragment key={c.id}>
+                              <td
+                                style={{ ...styles.td, cursor: 'pointer' }}
+                                onClick={() => navigate(`/course/${c.id}/dashboard/${row.id}`)}
+                              >
+                                <div style={styles.rateCell}>
+                                  <div style={styles.rateBar}>
+                                    <div style={{ ...styles.rateBarFill, width: `${cr?.rate ?? 0}%` }} />
+                                  </div>
+                                  <span style={styles.rateText}>{cr?.rate ?? 0}%</span>
+                                </div>
+                              </td>
+                              <td
+                                style={{ ...styles.td, cursor: 'pointer' }}
+                                onClick={() => navigate(`/course/${c.id}/dashboard/${row.id}`)}
+                              >
+                                <span style={styles.levelBadge}>{cr?.level ?? '-'}</span>
+                              </td>
+                            </React.Fragment>
+                          ) : (
+                            <td
+                              key={c.id}
+                              style={{ ...styles.td, cursor: 'pointer' }}
+                              onClick={() => navigate(`/course/${c.id}/dashboard/${row.id}`)}
+                            >
+                              <div style={styles.rateCell}>
+                                <div style={styles.rateBar}>
+                                  <div style={{ ...styles.rateBarFill, width: `${cr?.rate ?? 0}%` }} />
+                                </div>
+                                <span style={styles.rateText}>{cr?.rate ?? 0}%</span>
+                              </div>
+                            </td>
+                          );
+                        })}
+                        <td style={styles.td}>{lastDate}</td>
+                        <td style={styles.td}>
+                          {deletableAssessment?.assessmentId != null && (
+                            <button
+                              style={{
+                                ...styles.deleteBtn,
+                                opacity: deleting === `${deletableAssessment.assessmentId}` ? 0.5 : 1,
+                              }}
+                              disabled={deleting !== null}
+                              onClick={() => handleDelete(deletableAssessment.assessmentId!, row.name)}
+                            >
+                              {deleting === `${deletableAssessment.assessmentId}` ? '削除中...' : '提出履歴削除'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+// Need React import for Fragment
+import React from 'react';
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
@@ -133,7 +291,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '24px 16px 48px',
   },
   content: {
-    maxWidth: 900,
+    maxWidth: 1100,
     margin: '0 auto',
   },
   title: {
@@ -142,34 +300,33 @@ const styles: Record<string, React.CSSProperties> = {
     color: DEEP_BLUE,
     marginBottom: 20,
   },
-  filterRow: {
+  loadingBox: {
     display: 'flex',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 20,
+    justifyContent: 'center',
+    minHeight: 200,
   },
-  filterLabel: {
-    fontSize: 14,
-    fontWeight: 600,
-    color: '#555',
-  },
-  select: {
-    padding: '8px 12px',
-    fontSize: 14,
-    border: '1px solid #ddd',
-    borderRadius: 8,
-    background: '#fff',
+  spinner: {
+    width: 32,
+    height: 32,
+    border: `3px solid #eee`,
+    borderTop: `3px solid ${CYAN}`,
+    borderRadius: '50%',
+    animation: 'spin 0.8s linear infinite',
   },
   statsBar: {
     display: 'flex',
-    gap: 24,
+    gap: 16,
     marginBottom: 24,
+    flexWrap: 'wrap' as const,
   },
   stat: {
     background: '#fff',
     borderRadius: 10,
     padding: '14px 24px',
     boxShadow: '0 1px 6px rgba(0,0,0,0.04)',
+    minWidth: 120,
   },
   statValue: {
     fontSize: 24,
@@ -187,6 +344,34 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
   },
+  th: {
+    padding: '12px 14px',
+    textAlign: 'left' as const,
+    fontSize: 13,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    borderBottom: '2px solid #eee',
+    background: '#fafbfc',
+    whiteSpace: 'nowrap' as const,
+  },
+  thSub: {
+    padding: '6px 14px',
+    textAlign: 'left' as const,
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#999',
+    borderBottom: '1px solid #eee',
+    background: '#fafbfc',
+  },
+  tr: {
+    borderBottom: '1px solid #f0f0f0',
+  },
+  td: {
+    padding: '10px 14px',
+    fontSize: 13,
+    color: '#333',
+    whiteSpace: 'nowrap' as const,
+  },
   levelBadge: {
     fontSize: 12,
     fontWeight: 700,
@@ -194,15 +379,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: CYAN,
     padding: '3px 10px',
     borderRadius: 8,
+    display: 'inline-block',
+  },
+  rateCell: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
   },
   rateBar: {
-    display: 'inline-block',
-    width: 80,
+    width: 60,
     height: 6,
     background: '#eee',
     borderRadius: 3,
-    marginRight: 8,
-    verticalAlign: 'middle',
   },
   rateBarFill: {
     height: '100%',
@@ -213,5 +401,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 600,
     color: CYAN,
+    whiteSpace: 'nowrap' as const,
+  },
+  deleteBtn: {
+    padding: '4px 10px',
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#e74c3c',
+    background: '#ffeaea',
+    border: '1px solid #f5c6cb',
+    borderRadius: 6,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
 };

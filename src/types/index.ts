@@ -1,6 +1,7 @@
 export type CourseType = 'single' | 'leveled';
-export type RoleType = 'member' | 'leader' | 'board';
-export type AssessmentStatus = 'draft' | 'submitted';
+export type RoleType = 'member' | 'leader' | 'board' | 'retired';
+export type AssessmentStatus = 'submitted';
+export type AnswerType = 'scale5' | 'binary';
 
 export interface Course {
   id: string;
@@ -30,6 +31,8 @@ export interface Skill {
   weight: number;
   importance: number | null;
   ref_note: string | null;
+  answer_type: 'scale5' | 'binary';
+  score_excluded: boolean;
 }
 
 export interface Team {
@@ -42,8 +45,8 @@ export interface Profile {
   display_name: string;
   email: string;
   role: RoleType;
-  team_id: number;
-  current_stage: string | null;
+  team_id: number | null;
+  slack_id: string | null;
 }
 
 export interface Assessment {
@@ -52,6 +55,7 @@ export interface Assessment {
   course_id: string;
   status: AssessmentStatus;
   submitted_at: string | null;
+  score_snapshot: Record<string, unknown> | null;
   created_at: string;
 }
 

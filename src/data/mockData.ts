@@ -1,4 +1,4 @@
-import type { Course, Level, Skill, Team, Profile, Assessment, Answer } from '../types';
+import type { Course, Level, Skill, Team, Profile, Assessment, Answer, AnswerType } from '../types';
 
 // ── Courses ──
 export const courses: Course[] = [
@@ -43,7 +43,8 @@ const sk = (
   course_id: string, level_id: number, no: number, category: string,
   name: string, description: string, weight: number,
   importance: number | null = null, ref_note: string | null = null,
-): Skill => ({ id: ++skillId, course_id, level_id, no, category, name, description, weight, importance, ref_note });
+  answer_type: AnswerType = 'scale5', score_excluded = false,
+): Skill => ({ id: ++skillId, course_id, level_id, no, category, name, description, weight, importance, ref_note, answer_type, score_excluded });
 
 // Category-to-level_id mapping for academia
 const academiaCatMap: Record<string, number> = { '土台': 101, 'QA知識': 102, 'QA実務': 103, '案件経験': 104, 'ゴール': 105 };
@@ -147,7 +148,7 @@ export const skills: Skill[] = [
   sk('academia', academiaCatMap['ゴール'], 21, 'ゴール',
     'JSTQB FL 合格',
     'JSTQB Foundation Level に合格する（＝Entry昇格の要件）',
-    2.0, null, '全章'),
+    2.0, null, '全章', 'binary', true),
 
   // ══════════════════════════════════════
   // テスト自動化トラック — 35 skills (IDs 22–56)
@@ -311,25 +312,25 @@ export const teams: Team[] = [
 
 // ── Profiles ──
 export const profiles: Profile[] = [
-  { id: 'u1', display_name: '田中太郎', email: 'tanaka@widsley.com', role: 'member', team_id: 1, current_stage: 'Associate' },
-  { id: 'u2', display_name: '佐藤花子', email: 'sato@widsley.com', role: 'member', team_id: 1, current_stage: 'Entry' },
-  { id: 'u3', display_name: '鈴木一郎', email: 'suzuki@widsley.com', role: 'leader', team_id: 1, current_stage: 'Professional' },
-  { id: 'u4', display_name: '高橋美咲', email: 'takahashi@widsley.com', role: 'member', team_id: 2, current_stage: null },
-  { id: 'u5', display_name: '伊藤健太', email: 'ito@widsley.com', role: 'leader', team_id: 2, current_stage: 'Entry' },
-  { id: 'u6', display_name: '渡辺裕子', email: 'watanabe@widsley.com', role: 'board', team_id: 3, current_stage: null },
+  { id: 'u1', display_name: '田中太郎', email: 'tanaka@widsley.com', role: 'member', team_id: 1, slack_id: null },
+  { id: 'u2', display_name: '佐藤花子', email: 'sato@widsley.com', role: 'member', team_id: 1, slack_id: null },
+  { id: 'u3', display_name: '鈴木一郎', email: 'suzuki@widsley.com', role: 'leader', team_id: 1, slack_id: null },
+  { id: 'u4', display_name: '高橋美咲', email: 'takahashi@widsley.com', role: 'member', team_id: 2, slack_id: null },
+  { id: 'u5', display_name: '伊藤健太', email: 'ito@widsley.com', role: 'leader', team_id: 2, slack_id: null },
+  { id: 'u6', display_name: '渡辺裕子', email: 'watanabe@widsley.com', role: 'board', team_id: 3, slack_id: null },
 ];
 
 // ── Assessments ──
 export const assessments: Assessment[] = [
   // 田中 — both courses submitted
-  { id: 1, user_id: 'u1', course_id: 'academia', status: 'submitted', submitted_at: '2026-06-10T09:00:00Z', created_at: '2026-06-01T08:00:00Z' },
-  { id: 2, user_id: 'u1', course_id: 'automation', status: 'submitted', submitted_at: '2026-06-12T10:30:00Z', created_at: '2026-06-02T08:00:00Z' },
-  // 佐藤 — academia submitted, automation draft
-  { id: 3, user_id: 'u2', course_id: 'academia', status: 'submitted', submitted_at: '2026-06-11T14:00:00Z', created_at: '2026-06-03T08:00:00Z' },
-  { id: 4, user_id: 'u2', course_id: 'automation', status: 'draft', submitted_at: null, created_at: '2026-06-05T08:00:00Z' },
+  { id: 1, user_id: 'u1', course_id: 'academia', status: 'submitted', submitted_at: '2026-06-10T09:00:00Z', created_at: '2026-06-01T08:00:00Z', score_snapshot: null },
+  { id: 2, user_id: 'u1', course_id: 'automation', status: 'submitted', submitted_at: '2026-06-12T10:30:00Z', created_at: '2026-06-02T08:00:00Z', score_snapshot: null },
+  // 佐藤 — academia submitted, automation submitted
+  { id: 3, user_id: 'u2', course_id: 'academia', status: 'submitted', submitted_at: '2026-06-11T14:00:00Z', created_at: '2026-06-03T08:00:00Z', score_snapshot: null },
+  { id: 4, user_id: 'u2', course_id: 'automation', status: 'submitted', submitted_at: '2026-06-05T12:00:00Z', created_at: '2026-06-05T08:00:00Z', score_snapshot: null },
   // 鈴木 — both courses submitted
-  { id: 5, user_id: 'u3', course_id: 'academia', status: 'submitted', submitted_at: '2026-06-09T11:00:00Z', created_at: '2026-06-01T08:00:00Z' },
-  { id: 6, user_id: 'u3', course_id: 'automation', status: 'submitted', submitted_at: '2026-06-13T16:00:00Z', created_at: '2026-06-02T08:00:00Z' },
+  { id: 5, user_id: 'u3', course_id: 'academia', status: 'submitted', submitted_at: '2026-06-09T11:00:00Z', created_at: '2026-06-01T08:00:00Z', score_snapshot: null },
+  { id: 6, user_id: 'u3', course_id: 'automation', status: 'submitted', submitted_at: '2026-06-13T16:00:00Z', created_at: '2026-06-02T08:00:00Z', score_snapshot: null },
 ];
 
 // ── Answers ──

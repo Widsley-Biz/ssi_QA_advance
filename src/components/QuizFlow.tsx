@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { skills, levels, assessments, answers as mockAnswers } from '../data/mockData';
-import type { Answer } from '../types';
+import { fetchSkills, fetchLevels, fetchCourses, fetchLatestAnswers, submitAssessment } from '../lib/data';
+import { buildScoreSnapshot } from '../lib/score';
+import type { Skill, Level, Course, Answer } from '../types';
 
 // Widsley brand colors
 const DEEP_BLUE = '#03202F';
@@ -22,12 +23,19 @@ const bubbleConfig = [
 
 export default function QuizFlow() {
   const { course_id } = useParams<{ course_id: string }>();
-  const [searchParams] = useSearchParams();
-  const resume = searchParams.get('resume') === '1';
   const { user } = useAuth();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 600);
   const questionRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // Async data state
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [levels, setLevels] = useState<Level[]>([]);
+  const [course, setCourse] = useState<Course | null>(null);
+  const [answerMap, setAnswerMap] = useState<Record<number, number>>({});
+  const [hoveredBubble, setHoveredBubble] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 600);
@@ -35,51 +43,54 @@ export default function QuizFlow() {
     return () => window.removeEventListener('resize', handler);
   }, []);
 
-  // Get skills for this course, sorted by level then no
-  const courseSkills = skills
-    .filter((s) => s.course_id === course_id)
-    .sort((a, b) => {
-      const la = levels.find((l) => l.id === a.level_id);
-      const lb = levels.find((l) => l.id === b.level_id);
-      return (la?.sort_order ?? 0) - (lb?.sort_order ?? 0) || a.no - b.no;
-    });
+  // Load skills, levels, course, and previous answers
+  useEffect(() => {
+    if (!course_id || !user) return;
+    let cancelled = false;
 
-  // Load existing answers if resuming
-  const loadInitialAnswers = useCallback((): Record<number, number> => {
-    if (!resume || !user) return {};
-    const draft = assessments.find(
-      (a) => a.user_id === user.id && a.course_id === course_id && a.status === 'draft'
-    );
-    if (!draft) return {};
-    const existing: Record<number, number> = {};
-    mockAnswers
-      .filter((a) => a.assessment_id === draft.id)
-      .forEach((a) => { existing[a.skill_id] = a.score; });
-    return existing;
-  }, [resume, user, course_id]);
+    (async () => {
+      try {
+        const [fetchedSkills, fetchedLevels, fetchedCourses, prevAnswers] = await Promise.all([
+          fetchSkills(course_id),
+          fetchLevels(course_id),
+          fetchCourses(),
+          fetchLatestAnswers(user.id, course_id),
+        ]);
 
-  const [answerMap, setAnswerMap] = useState<Record<number, number>>(loadInitialAnswers);
-  const [hoveredBubble, setHoveredBubble] = useState<string | null>(null); // "skillId-score"
+        if (cancelled) return;
+
+        setSkills(fetchedSkills);
+        setLevels(fetchedLevels);
+        setCourse(fetchedCourses.find(c => c.id === course_id) ?? null);
+
+        // Pre-fill previous answers as initial values
+        if (prevAnswers.length > 0) {
+          const initial: Record<number, number> = {};
+          prevAnswers.forEach((a: Answer) => { initial[a.skill_id] = a.score; });
+          setAnswerMap(initial);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [course_id, user]);
+
+  // Sort skills by level sort_order then skill no
+  const courseSkills = [...skills].sort((a, b) => {
+    const la = levels.find((l) => l.id === a.level_id);
+    const lb = levels.find((l) => l.id === b.level_id);
+    return (la?.sort_order ?? 0) - (lb?.sort_order ?? 0) || a.no - b.no;
+  });
 
   const total = courseSkills.length;
   const answeredCount = Object.keys(answerMap).length;
   const progress = total > 0 ? Math.round((answeredCount / total) * 100) : 0;
-  const allAnswered = answeredCount === total;
-
-  // Determine which questions are unlocked
-  // A question is unlocked if all previous questions have been answered
-  const getUnlockedIndex = (): number => {
-    for (let i = 0; i < courseSkills.length; i++) {
-      if (!(courseSkills[i].id in answerMap)) return i;
-    }
-    return courseSkills.length; // all answered
-  };
-  const unlockedUpTo = getUnlockedIndex();
 
   const handleSelect = (skillId: number, score: number) => {
     const newMap = { ...answerMap, [skillId]: score };
     setAnswerMap(newMap);
-    syncToMock(newMap);
 
     // Auto-scroll to next unanswered question
     const skillIndex = courseSkills.findIndex((s) => s.id === skillId);
@@ -91,57 +102,37 @@ export default function QuizFlow() {
           block: 'center',
         });
       }, 200);
-    } else if (nextIndex >= courseSkills.length) {
-      // All done — scroll to submit
-      setTimeout(() => {
-        document.getElementById('quiz-submit')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'center',
-        });
-      }, 300);
     }
   };
 
-  const syncToMock = (map: Record<number, number>) => {
-    if (!user) return;
-    let draft = assessments.find(
-      (a) => a.user_id === user.id && a.course_id === course_id && a.status === 'draft'
+  const handleSubmit = async () => {
+    if (!user || !course_id || !course || submitting) return;
+    setSubmitting(true);
+    try {
+      // Build answers array for score snapshot
+      const answersArray: Answer[] = Object.entries(answerMap).map(([skillId, score], i) => ({
+        id: i,
+        assessment_id: 0,
+        skill_id: Number(skillId),
+        score,
+      }));
+
+      const snapshot = buildScoreSnapshot(course, levels, skills, answersArray);
+      await submitAssessment(user.id, course_id, answerMap, snapshot);
+      navigate(`/course/${course_id}/dashboard`);
+    } catch (err) {
+      console.error('Submit failed:', err);
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: DEEP_BLUE }}>読み込み中...</p>
+      </div>
     );
-    if (!draft) {
-      const newId = Math.max(...assessments.map((a) => a.id), 0) + 1;
-      draft = {
-        id: newId,
-        user_id: user.id,
-        course_id: course_id!,
-        status: 'draft',
-        submitted_at: null,
-        created_at: new Date().toISOString(),
-      };
-      assessments.push(draft);
-    }
-    for (const [skillIdStr, score] of Object.entries(map)) {
-      const skillId = Number(skillIdStr);
-      const existing = mockAnswers.find(
-        (a) => a.assessment_id === draft!.id && a.skill_id === skillId
-      );
-      if (existing) {
-        existing.score = score;
-      } else {
-        const newAnswerId = Math.max(...mockAnswers.map((a) => a.id), 0) + 1;
-        const newAnswer: Answer = {
-          id: newAnswerId,
-          assessment_id: draft!.id,
-          skill_id: skillId,
-          score,
-        };
-        mockAnswers.push(newAnswer);
-      }
-    }
-  };
-
-  const handleComplete = () => {
-    navigate(`/course/${course_id}/dashboard`);
-  };
+  }
 
   if (courseSkills.length === 0) {
     return (
@@ -222,7 +213,6 @@ export default function QuizFlow() {
       }}>
         {courseSkills.map((skill, idx) => {
           const level = levels.find((l) => l.id === skill.level_id);
-          const isLocked = idx > unlockedUpTo;
           const isAnswered = skill.id in answerMap;
           const selectedScore = answerMap[skill.id] ?? null;
 
@@ -262,34 +252,8 @@ export default function QuizFlow() {
                   position: 'relative',
                   padding: '20px 0',
                   borderBottom: '1px solid #f0f0f0',
-                  opacity: isLocked ? 0.35 : 1,
-                  pointerEvents: isLocked ? 'none' : 'auto',
-                  transition: 'opacity 0.3s ease',
                 }}
               >
-                {/* Lock overlay hint */}
-                {isLocked && (
-                  <div style={{
-                    position: 'absolute',
-                    inset: 0,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    zIndex: 2,
-                    pointerEvents: 'none',
-                  }}>
-                    <span style={{
-                      fontSize: 12,
-                      color: '#aaa',
-                      background: 'rgba(255,255,255,0.8)',
-                      padding: '4px 12px',
-                      borderRadius: 8,
-                    }}>
-                      前の質問に回答してください
-                    </span>
-                  </div>
-                )}
-
                 {/* Question text (top, left-aligned) */}
                 <div style={{ marginBottom: 14 }}>
                   <div style={{
@@ -297,6 +261,7 @@ export default function QuizFlow() {
                     alignItems: 'center',
                     gap: 8,
                     marginBottom: 6,
+                    flexWrap: 'wrap',
                   }}>
                     <span style={{
                       fontSize: 11,
@@ -314,6 +279,28 @@ export default function QuizFlow() {
                     {isAnswered && (
                       <span style={{ fontSize: 11, color: SEA_GREEN, fontWeight: 700 }}>✓</span>
                     )}
+                    {/* Importance stars */}
+                    {skill.importance != null && skill.importance > 0 && (
+                      <span style={{
+                        fontSize: 12,
+                        color: '#F5A623',
+                        letterSpacing: 1,
+                      }}>
+                        {'☆'.repeat(skill.importance)}
+                      </span>
+                    )}
+                    {/* Weight badge */}
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 600,
+                      color: '#fff',
+                      background: '#bbb',
+                      padding: '1px 6px',
+                      borderRadius: 4,
+                      lineHeight: '16px',
+                    }}>
+                      w{skill.weight}
+                    </span>
                   </div>
                   <div style={{
                     fontSize: isMobile ? 15 : 16,
@@ -339,8 +326,8 @@ export default function QuizFlow() {
                 </div>
 
                 {/* Answer row */}
-                {skill.course_id === 'academia' && skill.name === 'JSTQB FL 合格' ? (
-                  /* Binary choice for JSTQB certification */
+                {skill.answer_type === 'binary' ? (
+                  /* Binary choice (e.g. JSTQB certification) */
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -466,39 +453,35 @@ export default function QuizFlow() {
             padding: '48px 0 32px',
           }}
         >
-          {allAnswered ? (
+          {answeredCount > 0 ? (
             <>
-              <div style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: DEEP_BLUE,
-                marginBottom: 8,
-              }}>
-                全ての質問に回答しました！
-              </div>
               <div style={{
                 fontSize: 14,
                 color: '#888',
-                marginBottom: 24,
+                marginBottom: 16,
               }}>
-                結果を確認しましょう
+                {answeredCount === total
+                  ? '全ての質問に回答しました！'
+                  : `${answeredCount} / ${total} 問に回答済み（未回答でも提出できます）`}
               </div>
               <button
-                onClick={handleComplete}
+                onClick={handleSubmit}
+                disabled={submitting}
                 style={{
                   padding: '14px 48px',
                   fontSize: 16,
                   fontWeight: 700,
                   color: '#fff',
-                  background: GRADIENT,
+                  background: submitting ? '#bbb' : GRADIENT,
                   border: 'none',
                   borderRadius: 999,
-                  cursor: 'pointer',
-                  boxShadow: `0 6px 18px ${CYAN}40`,
+                  cursor: submitting ? 'default' : 'pointer',
+                  boxShadow: submitting ? 'none' : `0 6px 18px ${CYAN}40`,
                   transition: 'transform 0.15s',
+                  opacity: submitting ? 0.7 : 1,
                 }}
               >
-                結果を見る →
+                {submitting ? '送信中...' : '結果を見る →'}
               </button>
             </>
           ) : (
@@ -507,7 +490,7 @@ export default function QuizFlow() {
               color: '#bbb',
               padding: '20px 0',
             }}>
-              全ての質問に回答すると結果を確認できます（残り {total - answeredCount} 問）
+              1問以上回答すると提出できます
             </div>
           )}
         </div>

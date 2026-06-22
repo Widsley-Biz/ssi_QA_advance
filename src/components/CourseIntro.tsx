@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { courses, skills, assessments } from '../data/mockData';
+import { fetchCourses, fetchSkills, fetchAssessments } from '../lib/data';
+import type { Course, Assessment } from '../types';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
@@ -11,30 +13,65 @@ export default function CourseIntro() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const course = courses.find((c) => c.id === course_id);
-  if (!course) return <div style={styles.container}><p>コースが見つかりません</p></div>;
+  const [course, setCourse] = useState<Course | null>(null);
+  const [skillCount, setSkillCount] = useState(0);
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const courseSkills = skills.filter((s) => s.course_id === course_id);
-  const estimatedMin = Math.ceil(courseSkills.length * 0.5);
+  useEffect(() => {
+    if (!course_id || !user) return;
+    loadData();
+  }, [course_id, user]);
 
-  const userAssessments = user
-    ? assessments.filter((a) => a.user_id === user.id && a.course_id === course_id)
-    : [];
-  const draft = userAssessments.find((a) => a.status === 'draft');
-  const submitted = userAssessments.find((a) => a.status === 'submitted');
-  const answeredCount = userAssessments.length > 0 ? 'あり' : null;
+  async function loadData() {
+    try {
+      const [courses, skills, userAssessments] = await Promise.all([
+        fetchCourses(),
+        fetchSkills(course_id!),
+        fetchAssessments(user!.id, course_id!),
+      ]);
+      setCourse(courses.find(c => c.id === course_id) ?? null);
+      setSkillCount(skills.length);
+      setAssessments(userAssessments);
+    } catch (e) {
+      console.error('Failed to load course:', e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div style={styles.container}>
+        <p style={{ color: '#999' }}>読み込み中...</p>
+      </div>
+    );
+  }
+
+  if (!course) {
+    return (
+      <div style={styles.container}>
+        <p>コースが見つかりません</p>
+      </div>
+    );
+  }
+
+  const estimatedMin = Math.ceil(skillCount * 0.5);
+  const hasSubmitted = assessments.some(a => a.status === 'submitted');
 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <div style={styles.typeBadge}>{course.type === 'leveled' ? 'レベル別診断' : '共通ベース診断'}</div>
+        <div style={styles.typeBadge}>
+          {course.type === 'leveled' ? 'レベル別診断' : '共通ベース診断'}
+        </div>
         <h1 style={styles.title}>{course.name}</h1>
         <p style={styles.goal}>{course.goal}</p>
         <p style={styles.description}>{course.description}</p>
 
         <div style={styles.stats}>
           <div style={styles.statItem}>
-            <div style={styles.statValue}>{courseSkills.length}</div>
+            <div style={styles.statValue}>{skillCount}</div>
             <div style={styles.statLabel}>スキル数</div>
           </div>
           <div style={styles.statItem}>
@@ -43,24 +80,20 @@ export default function CourseIntro() {
           </div>
         </div>
 
+        <div style={styles.note}>
+          これは試験ではなく、現在地を自分でマーキングするチェックシートです。<br />
+          全問回答しなくても途中で提出できます。
+        </div>
+
         <div style={styles.buttonGroup}>
           <button
             onClick={() => navigate(`/course/${course_id}/quiz`)}
             style={styles.startBtn}
           >
-            {answeredCount ? '続きから回答する →' : 'はじめる →'}
+            {hasSubmitted ? '再回答する →' : 'はじめる →'}
           </button>
 
-          {draft && (
-            <button
-              onClick={() => navigate(`/course/${course_id}/quiz?resume=1`)}
-              style={styles.resumeBtn}
-            >
-              続きから
-            </button>
-          )}
-
-          {(submitted || draft) && (
+          {hasSubmitted && (
             <Link
               to={`/course/${course_id}/dashboard`}
               style={styles.resultLink}
@@ -69,6 +102,8 @@ export default function CourseIntro() {
             </Link>
           )}
         </div>
+
+        <Link to="/" style={styles.backLink}>← コース一覧に戻る</Link>
       </div>
     </div>
   );
@@ -117,13 +152,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     color: '#666',
     lineHeight: 1.7,
-    margin: '0 0 32px',
+    margin: '0 0 24px',
   },
   stats: {
     display: 'flex',
     justifyContent: 'center',
     gap: 40,
-    marginBottom: 32,
+    marginBottom: 24,
   },
   statItem: {
     textAlign: 'center' as const,
@@ -138,11 +173,21 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#999',
     marginTop: 2,
   },
+  note: {
+    fontSize: 12,
+    color: '#aaa',
+    lineHeight: 1.6,
+    marginBottom: 24,
+    padding: '12px 16px',
+    background: '#f9f9f9',
+    borderRadius: 8,
+  },
   buttonGroup: {
     display: 'flex',
     flexDirection: 'column',
     gap: 12,
     alignItems: 'center',
+    marginBottom: 20,
   },
   startBtn: {
     width: '100%',
@@ -156,22 +201,16 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     boxShadow: `0 6px 18px ${CYAN}40`,
   },
-  resumeBtn: {
-    width: '100%',
-    padding: '12px 24px',
-    fontSize: 15,
-    fontWeight: 600,
-    color: CYAN,
-    background: '#fff',
-    border: `1.5px solid ${CYAN}`,
-    borderRadius: 999,
-    cursor: 'pointer',
-  },
   resultLink: {
     fontSize: 14,
     color: CYAN,
     fontWeight: 600,
     textDecoration: 'none',
     marginTop: 4,
+  },
+  backLink: {
+    fontSize: 13,
+    color: '#bbb',
+    textDecoration: 'none',
   },
 };

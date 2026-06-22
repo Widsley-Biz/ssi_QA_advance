@@ -10,7 +10,8 @@ const LIGHT_BG = '#e0f0f8';
 const roleLabelMap: Record<string, string> = {
   member: 'メンバー',
   leader: 'リーダー',
-  board: '経営層',
+  board: '管理者',
+  retired: '退職者',
 };
 
 export default function Header() {
@@ -27,14 +28,14 @@ export default function Header() {
 
   const navItems = (
     <>
-      <Link to="/course/academia" style={styles.navLink}>Academia</Link>
-      <Link to="/course/automation" style={styles.navLink}>テスト自動化</Link>
+      <Link to="/" style={styles.navLink}>コース一覧</Link>
       {(user.role === 'leader' || user.role === 'board') && (
         <Link to="/team" style={styles.navLink}>チーム</Link>
       )}
       {user.role === 'board' && (
         <>
           <Link to="/board" style={styles.navLink}>全社</Link>
+          <Link to="/admin" style={styles.navLink}>管理</Link>
         </>
       )}
     </>
@@ -54,7 +55,7 @@ export default function Header() {
         {/* User area */}
         <div style={styles.userArea}>
           <span style={styles.userName}>{user.display_name}</span>
-          <span style={styles.roleBadge}>{roleLabelMap[user.role]}</span>
+          <span style={styles.roleBadge}>{roleLabelMap[user.role] ?? user.role}</span>
           <button onClick={handleLogout} style={styles.logoutBtn}>ログアウト</button>
         </div>
 
@@ -74,7 +75,7 @@ export default function Header() {
           {navItems}
           <div style={{ padding: '8px 16px', borderTop: '1px solid #eee', marginTop: 8 }}>
             <span style={styles.userName}>{user.display_name}</span>
-            <span style={styles.roleBadge}>{roleLabelMap[user.role]}</span>
+            <span style={styles.roleBadge}>{roleLabelMap[user.role] ?? user.role}</span>
             <button onClick={handleLogout} style={{ ...styles.logoutBtn, marginLeft: 12 }}>ログアウト</button>
           </div>
         </nav>
