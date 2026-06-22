@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -29,8 +29,11 @@ export default function Dashboard({ userId: propUserId }: Props) {
   const [historyData, setHistoryData] = useState<{ date: string; rate: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [memo, setMemo] = useState('');
+  const [memoSaved, setMemoSaved] = useState(false);
 
   const targetUserId = propUserId || paramUserId || user?.id;
+  const isMember = user?.role === 'member';
 
   useEffect(() => {
     if (!course_id || !targetUserId) return;
@@ -92,6 +95,22 @@ export default function Dashboard({ userId: propUserId }: Props) {
 
     return () => { cancelled = true; };
   }, [course_id, targetUserId]);
+
+  // Load memo from localStorage
+  useEffect(() => {
+    if (!course_id || !targetUserId) return;
+    const key = `memo_${course_id}_${targetUserId}`;
+    const saved = localStorage.getItem(key);
+    if (saved) setMemo(saved);
+  }, [course_id, targetUserId]);
+
+  const handleSaveMemo = useCallback(() => {
+    if (!course_id || !targetUserId) return;
+    const key = `memo_${course_id}_${targetUserId}`;
+    localStorage.setItem(key, memo);
+    setMemoSaved(true);
+    setTimeout(() => setMemoSaved(false), 2000);
+  }, [course_id, targetUserId, memo]);
 
   if (loading) {
     return (
@@ -323,8 +342,13 @@ export default function Dashboard({ userId: propUserId }: Props) {
                     <th style={thStyle}>スキル</th>
                     <th style={thStyle}>カテゴリ</th>
                     <th style={{ ...thStyle, textAlign: 'center' }}>スコア</th>
-                    <th style={{ ...thStyle, textAlign: 'center' }}>重み</th>
-                    <th style={{ ...thStyle, textAlign: 'center' }}>加重点</th>
+                    <th style={{ ...thStyle, textAlign: 'center' }}>難易度</th>
+                    {!isMember && (
+                      <>
+                        <th style={{ ...thStyle, textAlign: 'center' }}>重み</th>
+                        <th style={{ ...thStyle, textAlign: 'center' }}>加重点</th>
+                      </>
+                    )}
                     {prevAnswers.length > 0 && (
                       <th style={{ ...thStyle, textAlign: 'center' }}>前回比</th>
                     )}
@@ -343,13 +367,23 @@ export default function Dashboard({ userId: propUserId }: Props) {
                       const level = courseLevels.find(l => l.id === skill.level_id);
                       return (
                         <tr key={skill.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                          <td style={tdStyle}>{skill.name}</td>
+                          <td style={tdStyle}>
+                            <div style={{ fontWeight: 600 }}>{skill.name}</div>
+                            <div style={{ fontSize: 11, color: '#888', marginTop: 2, lineHeight: 1.4 }}>{skill.description}</div>
+                          </td>
                           <td style={tdStyle}>{level?.name ?? skill.category}</td>
                           <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 700 }}>{displayScore}</td>
-                          <td style={{ ...tdStyle, textAlign: 'center' }}>
-                            {skill.score_excluded ? '-' : skill.weight}
+                          <td style={{ ...tdStyle, textAlign: 'center', color: '#F5A623' }}>
+                            {skill.importance != null && skill.importance > 0 ? '★'.repeat(skill.importance) : '-'}
                           </td>
-                          <td style={{ ...tdStyle, textAlign: 'center' }}>{weightedScore}</td>
+                          {!isMember && (
+                            <>
+                              <td style={{ ...tdStyle, textAlign: 'center' }}>
+                                {skill.score_excluded ? '-' : skill.weight}
+                              </td>
+                              <td style={{ ...tdStyle, textAlign: 'center' }}>{weightedScore}</td>
+                            </>
+                          )}
                           {prevAnswers.length > 0 && (
                             <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 800, color: diff.color }}>
                               {diff.arrow}
@@ -386,7 +420,7 @@ export default function Dashboard({ userId: propUserId }: Props) {
                         )}
                       </div>
                       <div style={styles.nextMeta}>
-                        {s.category} ・ 重み {s.weight} ・ 現在スコア: {score}/5
+                        {s.category} ・ 難易度 {'★'.repeat(s.importance ?? 0) || '-'} ・ 現在スコア: {score}/5
                       </div>
                     </div>
                   </div>
@@ -429,11 +463,49 @@ export default function Dashboard({ userId: propUserId }: Props) {
           </div>
         )}
 
-        {/* Tip */}
+        {/* Meeting memo */}
         <div style={styles.tipBox}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: CYAN, marginBottom: 6 }}>リーダーとの面談メモに</div>
-          <div style={{ fontSize: 13.5, color: '#46546A', lineHeight: 1.7 }}>
-            この結果をもとに、次に伸ばすスキルや学習内容を相談しましょう。
+          <div style={{ fontSize: 14, fontWeight: 800, color: CYAN, marginBottom: 10 }}>面談メモ</div>
+          <textarea
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="リーダーとの面談メモを記入してください..."
+            style={{
+              width: '100%',
+              minHeight: 120,
+              padding: '12px 14px',
+              fontSize: 14,
+              lineHeight: 1.7,
+              color: DEEP_BLUE,
+              border: `1px solid ${CYAN}40`,
+              borderRadius: 10,
+              background: '#fff',
+              resize: 'vertical',
+              outline: 'none',
+              boxSizing: 'border-box',
+              fontFamily: 'inherit',
+            }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+            <button
+              onClick={handleSaveMemo}
+              style={{
+                padding: '8px 24px',
+                fontSize: 13,
+                fontWeight: 700,
+                color: '#fff',
+                background: `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
+                border: 'none',
+                borderRadius: 8,
+                cursor: 'pointer',
+                boxShadow: `0 2px 8px ${CYAN}30`,
+              }}
+            >
+              保存
+            </button>
+            {memoSaved && (
+              <span style={{ fontSize: 13, color: SEA_GREEN, fontWeight: 700 }}>保存しました</span>
+            )}
           </div>
         </div>
       </div>

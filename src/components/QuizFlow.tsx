@@ -279,28 +279,16 @@ export default function QuizFlow() {
                     {isAnswered && (
                       <span style={{ fontSize: 11, color: SEA_GREEN, fontWeight: 700 }}>✓</span>
                     )}
-                    {/* Importance stars */}
+                    {/* Difficulty display */}
                     {skill.importance != null && skill.importance > 0 && (
                       <span style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         color: '#F5A623',
                         letterSpacing: 1,
                       }}>
-                        {'☆'.repeat(skill.importance)}
+                        難易度 {'★'.repeat(skill.importance)}
                       </span>
                     )}
-                    {/* Weight badge */}
-                    <span style={{
-                      fontSize: 10,
-                      fontWeight: 600,
-                      color: '#fff',
-                      background: '#bbb',
-                      padding: '1px 6px',
-                      borderRadius: 4,
-                      lineHeight: '16px',
-                    }}>
-                      w{skill.weight}
-                    </span>
                   </div>
                   <div style={{
                     fontSize: isMobile ? 15 : 16,
