@@ -348,7 +348,7 @@ export async function deleteInvitation(id: number): Promise<void> {
   }
 }
 
-const GAS_INVITE_URL = 'https://script.google.com/a/macros/widsley.com/s/AKfycbwtSswuooeOs_cJRenwadMaURfUQ4OSxUYfw2GCr1XpiaW-XCWxSpGjgAg5Inz9rmCX/exec';
+const GAS_INVITE_URL = 'https://script.google.com/a/macros/widsley.com/s/AKfycbxr8eX3QoEK2z3HLsvYkXTnTDY8ViWTf3fUl9TqhhTS9N5FrybIabZMrWOncPr9BEFY/exec';
 
 export async function sendInviteEmail(
   email: string,
@@ -358,21 +358,23 @@ export async function sendInviteEmail(
 ): Promise<{ success: boolean }> {
   const roleLabelMap: Record<string, string> = { member: 'メンバー', leader: 'リーダー', board: '管理者' };
   try {
-    // Use GET with query params to avoid CORS issues with GAS
     const params = new URLSearchParams({
       email,
       role: roleLabelMap[role] ?? role,
       team: teamName || '未割当',
       appUrl,
     });
-    // Open in hidden iframe to bypass CORS (GAS redirects on GET)
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = `${GAS_INVITE_URL}?${params.toString()}`;
-    document.body.appendChild(iframe);
-    // Clean up after 10 seconds
-    setTimeout(() => iframe.remove(), 10000);
-    return { success: true };
+    const url = `${GAS_INVITE_URL}?${params.toString()}`;
+
+    // Use Image beacon - most reliable way to hit GAS without CORS issues
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ success: true });
+      img.onerror = () => resolve({ success: true }); // GAS returns JSON, not image, so onerror fires but request was sent
+      img.src = url;
+      // Fallback timeout
+      setTimeout(() => resolve({ success: true }), 5000);
+    });
   } catch (err) {
     console.error('Failed to send invite email:', err);
     return { success: false };
