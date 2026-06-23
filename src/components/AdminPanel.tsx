@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import type { Profile, Team, Course, Level, Skill, RoleType } from '../types';
+import { useAuth } from '../context/AuthContext';
 import {
   fetchProfiles,
   updateProfile,
@@ -11,7 +12,11 @@ import {
   fetchCourses,
   fetchLevels,
   fetchSkills,
+  fetchInvitations,
+  createInvitation,
+  deleteInvitation,
 } from '../lib/data';
+import type { Invitation } from '../lib/data';
 
 // ── Brand colors ──
 const DEEP_BLUE = '#03202F';
@@ -690,12 +695,235 @@ function MasterData() {
 }
 
 // ══════════════════════════════════════
+// Invite Management Tab
+// ══════════════════════════════════════
+function InviteManagement() {
+  const { user } = useAuth();
+  const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState<string>('member');
+  const [teamId, setTeamId] = useState<string>('');
+  const [sending, setSending] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [inv, t] = await Promise.all([fetchInvitations(), fetchTeams()]);
+      setInvitations(inv);
+      setTeams(t);
+    } catch (err) {
+      console.error('Failed to load invitations:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleInvite = async () => {
+    if (!email.trim()) return;
+    if (!email.includes('@widsley.com')) {
+      setFeedback('@widsley.com のアドレスを入力してください');
+      return;
+    }
+    setSending(true);
+    setFeedback('');
+    try {
+      await createInvitation(
+        email.trim(),
+        role,
+        teamId ? Number(teamId) : null,
+        user?.id ?? '',
+      );
+      setEmail('');
+      setRole('member');
+      setTeamId('');
+      setFeedback('招待を登録しました。ユーザーにアプリURLを共有してください。');
+      await loadData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '招待の登録に失敗しました';
+      setFeedback(msg.includes('duplicate') ? 'このメールアドレスは既に招待済みです' : msg);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('この招待を取り消しますか？')) return;
+    try {
+      await deleteInvitation(id);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to delete invitation:', err);
+    }
+  };
+
+  const pendingInvitations = invitations.filter(i => i.status === 'pending');
+  const acceptedInvitations = invitations.filter(i => i.status === 'accepted');
+
+  if (loading) return <p style={{ color: '#999' }}>読み込み中...</p>;
+
+  return (
+    <div>
+      {/* Invite form */}
+      <div style={{
+        background: '#f8fafc', borderRadius: 12, padding: '20px 24px', marginBottom: 24,
+        border: '1px solid #e5eef5',
+      }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 16px' }}>
+          新規招待
+        </h3>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '1 1 220px' }}>
+            <label style={labelStyle}>メールアドレス</label>
+            <input
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="name@widsley.com"
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: '0 0 130px' }}>
+            <label style={labelStyle}>ロール</label>
+            <select value={role} onChange={e => setRole(e.target.value)} style={inputStyle}>
+              <option value="member">メンバー</option>
+              <option value="leader">リーダー</option>
+              <option value="board">管理者</option>
+            </select>
+          </div>
+          <div style={{ flex: '0 0 160px' }}>
+            <label style={labelStyle}>チーム</label>
+            <select value={teamId} onChange={e => setTeamId(e.target.value)} style={inputStyle}>
+              <option value="">未割当</option>
+              {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <button
+            onClick={handleInvite}
+            disabled={sending || !email.trim()}
+            style={{
+              padding: '9px 20px', fontSize: 14, fontWeight: 700, color: '#fff',
+              background: sending ? '#ccc' : `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
+              border: 'none', borderRadius: 8, cursor: sending ? 'wait' : 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {sending ? '送信中...' : '招待登録'}
+          </button>
+        </div>
+        {feedback && (
+          <div style={{
+            marginTop: 10, fontSize: 13, fontWeight: 600,
+            color: feedback.includes('失敗') || feedback.includes('既に') || feedback.includes('@') ? '#e74c3c' : SEA_GREEN,
+          }}>
+            {feedback}
+          </div>
+        )}
+        <div style={{ marginTop: 10, fontSize: 12, color: '#999', lineHeight: 1.5 }}>
+          招待を登録すると、ユーザーが初回Googleログイン時に自動的にロール・チームが設定されます。<br />
+          アプリURL（https://app-two-gamma-56.vercel.app）をメールやSlackで共有してください。
+        </div>
+      </div>
+
+      {/* Pending invitations */}
+      <h3 style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 12px' }}>
+        招待中（{pendingInvitations.length}件）
+      </h3>
+      {pendingInvitations.length === 0 ? (
+        <p style={{ color: '#999', fontSize: 13, marginBottom: 24 }}>なし</p>
+      ) : (
+        <div style={{ overflowX: 'auto', marginBottom: 24 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #eee' }}>
+                <th style={thSt}>メール</th>
+                <th style={thSt}>ロール</th>
+                <th style={thSt}>チーム</th>
+                <th style={thSt}>登録日</th>
+                <th style={thSt}>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingInvitations.map(inv => (
+                <tr key={inv.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                  <td style={tdSt}>{inv.email}</td>
+                  <td style={tdSt}>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 8,
+                      background: inv.role === 'board' ? `${MAGENTA}15` : inv.role === 'leader' ? `${CYAN}15` : '#f0f0f0',
+                      color: inv.role === 'board' ? MAGENTA : inv.role === 'leader' ? CYAN : '#666',
+                    }}>
+                      {ROLE_LABELS[inv.role as RoleType] ?? inv.role}
+                    </span>
+                  </td>
+                  <td style={tdSt}>{teams.find(t => t.id === inv.team_id)?.name ?? '未割当'}</td>
+                  <td style={tdSt}>{new Date(inv.created_at).toLocaleDateString('ja-JP')}</td>
+                  <td style={tdSt}>
+                    <button onClick={() => handleDelete(inv.id)} style={{
+                      fontSize: 11, color: '#e74c3c', background: '#ffeaea',
+                      border: '1px solid #f5c6cb', borderRadius: 6, padding: '3px 8px', cursor: 'pointer',
+                    }}>
+                      取消
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Accepted invitations */}
+      {acceptedInvitations.length > 0 && (
+        <>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 12px' }}>
+            承認済み（{acceptedInvitations.length}件）
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #eee' }}>
+                  <th style={thSt}>メール</th>
+                  <th style={thSt}>ロール</th>
+                  <th style={thSt}>チーム</th>
+                  <th style={thSt}>登録日</th>
+                </tr>
+              </thead>
+              <tbody>
+                {acceptedInvitations.map(inv => (
+                  <tr key={inv.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    <td style={tdSt}>{inv.email}</td>
+                    <td style={tdSt}>{ROLE_LABELS[inv.role as RoleType] ?? inv.role}</td>
+                    <td style={tdSt}>{teams.find(t => t.id === inv.team_id)?.name ?? '未割当'}</td>
+                    <td style={tdSt}>{new Date(inv.created_at).toLocaleDateString('ja-JP')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const labelStyle: React.CSSProperties = { display: 'block', fontSize: 12, fontWeight: 600, color: '#666', marginBottom: 4 };
+const inputStyle: React.CSSProperties = { width: '100%', padding: '8px 10px', fontSize: 14, border: '1px solid #ddd', borderRadius: 8, background: '#fff' };
+const thSt: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: '#8893A4' };
+const tdSt: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: DEEP_BLUE };
+
+// ══════════════════════════════════════
 // AdminPanel (root)
 // ══════════════════════════════════════
 export default function AdminPanel() {
   const location = useLocation();
 
   const tabs = [
+    { path: '/admin/invite', label: '招待' },
     { path: '/admin/users', label: 'ユーザー管理' },
     { path: '/admin/teams', label: 'チーム管理' },
     { path: '/admin/master', label: 'マスタ管理' },
@@ -727,11 +955,12 @@ export default function AdminPanel() {
         {/* Tab content */}
         <div style={styles.tabContent}>
           <Routes>
+            <Route path="invite" element={<InviteManagement />} />
             <Route path="users" element={<UserManagement />} />
             <Route path="teams" element={<TeamManagement />} />
             <Route path="master" element={<MasterData />} />
-            <Route path="" element={<Navigate to="/admin/users" replace />} />
-            <Route path="*" element={<Navigate to="/admin/users" replace />} />
+            <Route path="" element={<Navigate to="/admin/invite" replace />} />
+            <Route path="*" element={<Navigate to="/admin/invite" replace />} />
           </Routes>
         </div>
       </div>

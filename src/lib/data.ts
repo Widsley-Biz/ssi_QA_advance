@@ -299,3 +299,67 @@ export async function deleteTeam(id: number): Promise<void> {
     if (error) throw error;
   }
 }
+
+// ══════════════════════════════════════
+// Invitations
+// ══════════════════════════════════════
+export interface Invitation {
+  id: number;
+  email: string;
+  role: string;
+  team_id: number | null;
+  invited_by: string | null;
+  status: string;
+  created_at: string;
+}
+
+export async function fetchInvitations(): Promise<Invitation[]> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return [];
+    const { data, error } = await sb.from('invitations').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data as Invitation[];
+  }
+  return [];
+}
+
+export async function createInvitation(email: string, role: string, teamId: number | null, invitedBy: string): Promise<Invitation> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) throw new Error('Supabase not available');
+    const { data, error } = await sb
+      .from('invitations')
+      .insert({ email: email.toLowerCase().trim(), role, team_id: teamId, invited_by: invitedBy, status: 'pending' })
+      .select()
+      .single();
+    if (error) throw error;
+    return data as Invitation;
+  }
+  throw new Error('Invitations require Supabase');
+}
+
+export async function deleteInvitation(id: number): Promise<void> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return;
+    const { error } = await sb.from('invitations').delete().eq('id', id);
+    if (error) throw error;
+  }
+}
+
+export async function sendInviteEmail(email: string, appUrl: string): Promise<void> {
+  if (isSupabaseMode()) {
+    const sb = await getSupabase();
+    if (!sb) return;
+    // Use Supabase Auth's invite method to send magic link
+    const { error } = await sb.auth.admin.inviteUserByEmail(email, {
+      redirectTo: appUrl,
+    });
+    // If admin invite fails (e.g., no service_role key), fall back silently
+    // The user can still log in via Google OAuth directly
+    if (error) {
+      console.warn('Admin invite email failed (expected if using anon key):', error.message);
+    }
+  }
+}
