@@ -73,14 +73,14 @@ export default function Header() {
 
       {/* Mobile dropdown */}
       {menuOpen && (
-        <nav style={styles.mobileNav} onClick={() => setMenuOpen(false)}>
+        <div id="mobile-menu" style={styles.mobileNav} onClick={() => setMenuOpen(false)}>
           {navItems}
           <div style={{ padding: '8px 16px', borderTop: '1px solid #eee', marginTop: 8 }}>
             <span style={styles.userName}>{user.display_name}</span>
             <span style={styles.roleBadge}>{roleLabelMap[user.role] ?? user.role}</span>
             <button onClick={handleLogout} style={{ ...styles.logoutBtn, marginLeft: 12 }}>ログアウト</button>
           </div>
-        </nav>
+        </div>
       )}
     </header>
   );
@@ -186,10 +186,12 @@ const styleSheet = typeof document !== 'undefined' && (() => {
       header nav[style] { display: none !important; }
       header button[aria-label="メニュー"] { display: block !important; }
       header > div > div:nth-child(3) { display: none !important; }
+      #mobile-menu { display: flex !important; flex-direction: column; }
+      #mobile-menu a { padding: 10px 20px !important; font-size: 15px !important; }
     }
     @media (min-width: 769px) {
       header button[aria-label="メニュー"] { display: none !important; }
-      header > nav { display: none !important; }
+      #mobile-menu { display: none !important; }
     }
     header a[style]:hover { background: ${LIGHT_BG}; }
   `;

@@ -16,8 +16,12 @@ import {
   createInvitation,
   deleteInvitation,
   sendInviteEmail,
+  fetchCertifications,
+  createCertification,
+  updateCertification,
+  deleteCertification,
 } from '../lib/data';
-import type { Invitation } from '../lib/data';
+import type { Invitation, CertificationRecord } from '../lib/data';
 
 // ── Brand colors ──
 const DEEP_BLUE = '#03202F';
@@ -980,6 +984,233 @@ const thSt: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', font
 const tdSt: React.CSSProperties = { padding: '8px 10px', fontSize: 13, color: DEEP_BLUE };
 
 // ══════════════════════════════════════
+// Certification Management Tab
+// ══════════════════════════════════════
+const LEVEL_OPTIONS = [
+  { value: 'academia', label: 'Academia' },
+  { value: 'entry', label: 'エントリー' },
+  { value: 'associate', label: 'アソシエイト' },
+  { value: 'professional', label: 'プロフェッショナル' },
+  { value: 'expert', label: 'エキスパート' },
+];
+const CATEGORY_OPTIONS = ['国家資格', 'QA推奨', 'ベンダー系', 'ベンダーニュートラル系', 'AI系', '社内認定資格'];
+
+function CertificationManagement() {
+  const [certs, setCerts] = useState<CertificationRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterLevel, setFilterLevel] = useState<string>('');
+  const [editingCert, setEditingCert] = useState<CertificationRecord | null>(null);
+  const [isNew, setIsNew] = useState(false);
+  const [formName, setFormName] = useState('');
+  const [formDesc, setFormDesc] = useState('');
+  const [formLevel, setFormLevel] = useState('entry');
+  const [formCategory, setFormCategory] = useState('国家資格');
+  const [formReward, setFormReward] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState('');
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await fetchCertifications();
+      setCerts(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const openNew = () => {
+    setIsNew(true);
+    setEditingCert(null);
+    setFormName('');
+    setFormDesc('');
+    setFormLevel('entry');
+    setFormCategory('国家資格');
+    setFormReward('');
+    setFeedback('');
+  };
+
+  const openEdit = (cert: CertificationRecord) => {
+    setIsNew(false);
+    setEditingCert(cert);
+    setFormName(cert.name);
+    setFormDesc(cert.description);
+    setFormLevel(cert.level);
+    setFormCategory(cert.category);
+    setFormReward(cert.reward ?? '');
+    setFeedback('');
+  };
+
+  const handleSave = async () => {
+    if (!formName.trim()) { setFeedback('資格名を入力してください'); return; }
+    setSaving(true);
+    try {
+      if (isNew) {
+        await createCertification({
+          name: formName.trim(),
+          description: formDesc,
+          level: formLevel,
+          category: formCategory,
+          reward: formReward || null,
+          sort_order: certs.filter(c => c.level === formLevel).length + 1,
+        });
+        setFeedback('追加しました');
+      } else if (editingCert) {
+        await updateCertification(editingCert.id, {
+          name: formName.trim(),
+          description: formDesc,
+          level: formLevel,
+          category: formCategory,
+          reward: formReward || null,
+        });
+        setFeedback('更新しました');
+      }
+      await loadData();
+      setTimeout(() => { setEditingCert(null); setIsNew(false); }, 800);
+    } catch (err) {
+      setFeedback('保存に失敗しました');
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (cert: CertificationRecord) => {
+    if (!confirm(`「${cert.name}」を削除しますか？`)) return;
+    try {
+      await deleteCertification(cert.id);
+      await loadData();
+    } catch (err) {
+      console.error(err);
+      alert('削除に失敗しました');
+    }
+  };
+
+  const filteredCerts = filterLevel ? certs.filter(c => c.level === filterLevel) : certs;
+  const grouped = LEVEL_OPTIONS.map(lo => ({
+    ...lo,
+    certs: filteredCerts.filter(c => c.level === lo.value),
+  })).filter(g => g.certs.length > 0);
+
+  if (loading) return <p style={{ color: '#999' }}>読み込み中...</p>;
+
+  return (
+    <div>
+      {/* Header + actions */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <select value={filterLevel} onChange={e => setFilterLevel(e.target.value)} style={inputStyle}>
+            <option value="">全レベル</option>
+            {LEVEL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <span style={{ fontSize: 13, color: '#888', alignSelf: 'center' }}>{filteredCerts.length}件</span>
+        </div>
+        <button onClick={openNew} style={{
+          padding: '8px 18px', fontSize: 13, fontWeight: 700, color: '#fff',
+          background: `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
+          border: 'none', borderRadius: 8, cursor: 'pointer',
+        }}>
+          ＋ 資格を追加
+        </button>
+      </div>
+
+      {/* Edit/New modal */}
+      {(editingCert || isNew) && (
+        <div style={{
+          background: '#f8fafc', borderRadius: 12, padding: '20px 24px', marginBottom: 20,
+          border: `1px solid ${CYAN}30`,
+        }}>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 12px' }}>
+            {isNew ? '新規資格' : `編集: ${editingCert?.name}`}
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#666' }}>資格名</label>
+              <input value={formName} onChange={e => setFormName(e.target.value)} style={inputStyle} placeholder="資格名" />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#666' }}>説明</label>
+              <textarea value={formDesc} onChange={e => setFormDesc(e.target.value)} style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }} placeholder="資格の説明（任意）" />
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 150px' }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#666' }}>レベル</label>
+                <select value={formLevel} onChange={e => setFormLevel(e.target.value)} style={inputStyle}>
+                  {LEVEL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: '1 1 150px' }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#666' }}>カテゴリ</label>
+                <select value={formCategory} onChange={e => setFormCategory(e.target.value)} style={inputStyle}>
+                  {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: '1 1 200px' }}>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#666' }}>報奨金情報</label>
+                <input value={formReward} onChange={e => setFormReward(e.target.value)} style={inputStyle} placeholder="例: 報奨金10,000円" />
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14, alignItems: 'center' }}>
+            <button onClick={handleSave} disabled={saving} style={{
+              padding: '8px 20px', fontSize: 13, fontWeight: 700, color: '#fff',
+              background: saving ? '#ccc' : `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
+              border: 'none', borderRadius: 8, cursor: saving ? 'wait' : 'pointer',
+            }}>
+              {saving ? '保存中...' : '保存'}
+            </button>
+            <button onClick={() => { setEditingCert(null); setIsNew(false); }} style={{
+              padding: '8px 16px', fontSize: 13, color: '#666', background: '#f0f0f0',
+              border: 'none', borderRadius: 8, cursor: 'pointer',
+            }}>
+              キャンセル
+            </button>
+            {feedback && <span style={{ fontSize: 13, fontWeight: 600, color: feedback.includes('失敗') ? '#e74c3c' : SEA_GREEN }}>{feedback}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Cert list grouped by level */}
+      {grouped.map(g => (
+        <div key={g.value} style={{ marginBottom: 16 }}>
+          <h4 style={{ fontSize: 14, fontWeight: 700, color: DEEP_BLUE, margin: '0 0 8px' }}>{g.label}（{g.certs.length}件）</h4>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {g.certs.map(cert => (
+              <div key={cert.id} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', background: '#fff', borderRadius: 8, border: '1px solid #eee', gap: 8,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: DEEP_BLUE }}>{cert.name}</div>
+                  <div style={{ fontSize: 11, color: '#999' }}>
+                    {cert.category}
+                    {cert.description && ` — ${cert.description.slice(0, 40)}${cert.description.length > 40 ? '...' : ''}`}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                  <button onClick={() => openEdit(cert)} style={{
+                    fontSize: 11, color: CYAN, background: `${CYAN}10`, border: `1px solid ${CYAN}30`,
+                    borderRadius: 6, padding: '3px 10px', cursor: 'pointer',
+                  }}>編集</button>
+                  <button onClick={() => handleDelete(cert)} style={{
+                    fontSize: 11, color: '#e74c3c', background: '#ffeaea', border: '1px solid #f5c6cb',
+                    borderRadius: 6, padding: '3px 10px', cursor: 'pointer',
+                  }}>削除</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════
 // AdminPanel (root)
 // ══════════════════════════════════════
 export default function AdminPanel() {
@@ -989,6 +1220,7 @@ export default function AdminPanel() {
     { path: '/admin/invite', label: '招待' },
     { path: '/admin/users', label: 'ユーザー管理' },
     { path: '/admin/teams', label: 'チーム管理' },
+    { path: '/admin/certs', label: '資格管理' },
     { path: '/admin/master', label: 'マスタ管理' },
   ];
 
@@ -1021,6 +1253,7 @@ export default function AdminPanel() {
             <Route path="invite" element={<InviteManagement />} />
             <Route path="users" element={<UserManagement />} />
             <Route path="teams" element={<TeamManagement />} />
+            <Route path="certs" element={<CertificationManagement />} />
             <Route path="master" element={<MasterData />} />
             <Route path="" element={<Navigate to="/admin/invite" replace />} />
             <Route path="*" element={<Navigate to="/admin/invite" replace />} />
