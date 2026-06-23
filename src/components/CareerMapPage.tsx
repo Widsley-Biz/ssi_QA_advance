@@ -57,7 +57,7 @@ const ACADEMIA_CELL: CellData = {
   title: 'QA基礎',
   role: 'ITキャリアスタート。研修でQAエンジニアの基礎を学び、案件を通してIT知識と経験を増やす',
   skills: ['社会人基礎力', 'QA基礎知識', 'テスト技法理解', 'テスト実施（指導下）'],
-  certs: ['JSTQB FL'],
+  certs: ['JSTQB Foundation Level'],
 };
 
 // ── Track group data ──
@@ -80,13 +80,13 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: '設計者',
             role: '仕様書を読み解き、抜け漏れのないテストケースを設計すること',
             skills: ['高度なテスト設計技法', '基本的な自動化ツールの運用', '開発者との円滑なコミュニケーション'],
-            certs: ['JSTQB TA', 'JCSQE 初級', 'IVEC テスタークラス'],
+            certs: ['JSTQB Advanced Level テストアナリスト', 'JCSQE 初級', 'IVEC テスタークラス'],
           },
           PROFESSIONAL: {
             title: '推進者',
             role: '効率的なテスト計画と、リスクに基づいた優先順位付け',
             skills: ['テスト戦略の策定', '自動化フレームワークの構築', '不具合分析によるプロセス改善提案'],
-            certs: ['JSTQB TM', 'JCSQE 中級', 'IVEC デザイナークラス'],
+            certs: ['JSTQB Advanced Level テストマネージャ', 'JCSQE 中級', 'IVEC デザイナークラス'],
           },
           EXPERT: {
             title: 'マネージャー',
@@ -103,25 +103,25 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: '実行者',
             role: 'テスト仕様書に基づき、バグを確実に発見・報告すること',
             skills: ['テスト技法の基礎', 'Jira等バグ管理ツールの操作', '不具合起票'],
-            certs: ['ITパスポート', 'IVEC アシスタントクラス'],
+            certs: ['ITパスポート試験', 'IVEC アシスタントクラス'],
           },
           ASSOCIATE: {
             title: '自動化ユーザー',
             role: 'ノーコードツールや録画機能でテストを作成できる。HTML構造を理解し要素を特定できる',
             skills: ['Autify/mabl/Selenium IDE', 'HTML/CSS', 'SQL基礎'],
-            certs: ['Python 3 基礎試験', 'Oracle Java Silver'],
+            certs: ['Pythonエンジニア認定基礎試験', 'Oracle Certified Java Programmer, Silver SE 11'],
           },
           PROFESSIONAL: {
             title: '自動化エンジニア',
             role: 'コードを書いてテストを自動化できる。APIテストやCI/CDへの組み込みができる',
             skills: ['Python/Playwright', 'GitHub', 'CI/CDツール', 'API(Postman)'],
-            certs: ['AWS CLF', 'JSTQB TAE', 'GitHub Foundations'],
+            certs: ['AWS Certified Cloud Practitioner', 'JSTQB Specialist テスト自動化エンジニア', 'GitHub Foundations'],
           },
           EXPERT: {
             title: 'QAアーキテクト',
             role: '組織全体の自動化戦略を立てる。保守性の高いフレームワークを設計し、ROIを管理する',
             skills: ['アーキテクチャ設計', 'Docker', '負荷テスト', 'チームマネジメント'],
-            certs: ['AWS SAA/SAP', 'JSTQB AL-TM', 'ISACA CISA'],
+            certs: ['AWS Certified Solutions Architect - Professional', 'JSTQB Advanced Level テストマネージャ', 'ISACA CISA'],
           },
         },
       },
@@ -132,19 +132,19 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: '侵害分析',
             role: '代表的な脆弱性を理解し、脆弱性の再現確認やリスク説明ができる',
             skills: ['OWASP基礎', '認証/認可の基本', '情報漏えい対策', '脆弱性再現', '基本対策の説明'],
-            certs: ['ISC2 CC', 'CompTIA Security+'],
+            certs: ['Certified in Cybersecurity (CC)', 'CompTIA Security+'],
           },
           PROFESSIONAL: {
             title: '防御設計支援',
             role: 'セキュリティ観点でテスト設計・診断・優先度判断を行い、設計改善や対策提案を支援できる',
             skills: ['攻撃シナリオ設計', '脆弱性連鎖分析', '認証設計レビュー', '被害影響分析', 'リスク評価'],
-            certs: ['徳丸基礎試験', 'SecuriST 脆弱性診断士', 'SSCP', 'CEH'],
+            certs: ['徳丸基礎試験', 'SecuriST 脆弱性診断士', 'Systems Security Certified Practitioner (SSCP)', 'CEH'],
           },
           EXPERT: {
             title: 'セキュリティレビュー・リード',
             role: '仕様・設計レビューを通じて問題を指摘し、教育・改善活動を通じて組織へ影響を与えられる',
             skills: ['セキュア構成レビュー', 'アクセス制御設計', 'データ保護設計', 'セキュリティ教育設計', '組織改善推進'],
-            certs: ['情報処理安全確保支援士(SC)', 'CISSP', 'OSCP'],
+            certs: ['情報処理安全確保支援士試験', 'Certified Information Systems Security Professional (CISSP)', 'OSCP'],
           },
         },
       },
@@ -162,25 +162,25 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'プログラマー',
             role: 'プログラミング基礎を習得し、詳細設計に基づくコーディングを行う',
             skills: ['プログラミング基礎', '詳細設計', 'バージョン管理', 'AIツール補完活用'],
-            certs: ['ITパスポート', 'Java 3級', 'Oracle Bronze', 'Python基礎試験'],
+            certs: ['ITパスポート試験', 'Javaプログラミング能力認定試験 3級', 'Oracle Master Bronze', 'Pythonエンジニア認定基礎試験'],
           },
           ASSOCIATE: {
             title: 'ジュニアエンジニア',
             role: '基本設計・DB設計・API設計を行い、非機能要件を把握できる',
             skills: ['基本設計', 'DB設計', 'API設計', '非機能要件の把握', 'クラウド基礎'],
-            certs: ['基本情報技術者', 'Java Silver', 'AWS CLF', 'AWS AIP'],
+            certs: ['基本情報技術者試験', 'Oracle Certified Java Programmer, Silver SE 11', 'AWS Certified Cloud Practitioner', 'AWS Certified AI Practitioner'],
           },
           PROFESSIONAL: {
             title: 'シニアエンジニア',
             role: '要件定義・顧客折衝・見積もり・プロジェクト技術リードを行う',
             skills: ['要件定義', '顧客折衝', '見積もり', 'パフォーマンス設計', 'LLM API組み込み'],
-            certs: ['応用情報技術者', 'Java Gold', 'AWS SAA', 'G検定'],
+            certs: ['応用情報技術者試験', 'Oracle Certified Java Programmer, Gold SE 11', 'AWS Certified Solutions Architect - Associate', 'G検定'],
           },
           EXPERT: {
             title: 'システムコンサルタント',
             role: 'ドメイン知識を深化し、業務コンサルティング・提案・PoC主導を行う',
             skills: ['ドメイン知識の深化', '業務コンサルティング', '提案・PoC主導', 'RAG/エージェント構築'],
-            certs: ['システムアーキテクト', 'ITストラテジスト', 'AWS SAP', 'AWS MLA'],
+            certs: ['システムアーキテクト試験', 'ITストラテジスト試験', 'AWS Certified Solutions Architect - Professional', 'AWS Certified Machine Learning - Specialty'],
           },
         },
       },
@@ -191,13 +191,13 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'テックリード',
             role: 'アーキテクチャ設計・技術選定・チームの技術指導を行う',
             skills: ['アーキテクチャ設計', '技術選定', 'チームの技術指導', 'パフォーマンス設計'],
-            certs: ['応用情報技術者', 'AWS SAP', 'Azure Solutions Architect'],
+            certs: ['応用情報技術者試験', 'AWS Certified Solutions Architect - Professional', 'Microsoft Certified: Azure Solutions Architect Expert'],
           },
           EXPERT: {
             title: 'チーフアーキテクト',
             role: '全社技術戦略・大規模システム設計・技術組織のリードを行う',
             skills: ['全社技術戦略', '大規模システム設計', '技術組織のリード'],
-            certs: ['システムアーキテクト', 'CKA', 'AWS SAP'],
+            certs: ['システムアーキテクト試験', 'Certified Kubernetes Administrator (CKA)', 'AWS Certified Solutions Architect - Professional'],
           },
         },
       },
@@ -215,25 +215,25 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'インフラオペレーター',
             role: 'サーバ基本設定・運用、NW基本設定・疎通確認を行う',
             skills: ['サーバ基本設定・運用', 'NW基本設定', 'EC2・VPC基礎', '監視ツール運用'],
-            certs: ['ITパスポート', 'AWS CLF', 'LPIC-1', 'Azure Fundamentals'],
+            certs: ['ITパスポート試験', 'AWS Certified Cloud Practitioner', 'LPIC-1', 'Microsoft Certified: Azure Fundamentals'],
           },
           ASSOCIATE: {
             title: 'インフラエンジニア',
             role: 'サーバ・NW設計書作成、可用性設計、IaC基礎を行う',
             skills: ['サーバ・NW設計書作成', '可用性設計', 'IaC基礎', 'クラウド構成設計'],
-            certs: ['基本情報技術者', 'AWS SAA', 'CCNA', 'LPIC-2'],
+            certs: ['基本情報技術者試験', 'AWS Certified Solutions Architect - Associate', 'CCNA', 'LPIC-2'],
           },
           PROFESSIONAL: {
             title: 'シニアインフラエンジニア',
             role: '会社全体のサーバ・NW構成統括・設計・管理を行う',
             skills: ['インフラ最適化検討', 'コスト管理', 'セキュリティ設計', 'インフラ構築自動化'],
-            certs: ['応用情報技術者', 'AWS DOP', 'CCNP', 'LPIC-3'],
+            certs: ['応用情報技術者試験', 'AWS Certified DevOps Engineer - Professional', 'CCNP', 'LPIC-3'],
           },
           EXPERT: {
             title: 'インフラアーキテクト',
             role: '大規模・複雑環境の統括・設計（マルチクラウド・グローバル対応等）',
             skills: ['インフラ最適化推進', '組織・チームリード', 'AIワークロードのインフラ設計'],
-            certs: ['ITサービスマネージャ', 'ネットワークスペシャリスト', 'AWS SAP', 'CKA'],
+            certs: ['ITサービスマネージャ試験', 'ネットワークスペシャリスト試験', 'AWS Certified Solutions Architect - Professional', 'Certified Kubernetes Administrator (CKA)'],
           },
         },
       },
@@ -244,13 +244,13 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'セキュリティエンジニア',
             role: '防御設計・アクセス制御・インシデント対応・セキュリティポリシー運用',
             skills: ['防御設計', 'アクセス制御', 'インシデント対応', 'セキュリティポリシー運用'],
-            certs: ['応用情報技術者', 'AWS SCS', 'CCSP', 'CompTIA Security+'],
+            certs: ['応用情報技術者試験', 'AWS Certified Security - Specialty', 'Certified Cloud Security Professional (CCSP)', 'CompTIA Security+'],
           },
           EXPERT: {
             title: 'セキュリティアーキテクト',
             role: 'SOC運用統括・サイバー攻撃対策・セキュリティガバナンス',
             skills: ['SOC運用統括', 'サイバー攻撃対策', 'セキュリティガバナンス'],
-            certs: ['情報処理安全確保支援士', 'CISSP', 'AWS SCS'],
+            certs: ['情報処理安全確保支援士試験', 'Certified Information Systems Security Professional (CISSP)', 'AWS Certified Security - Specialty'],
           },
         },
       },
@@ -268,7 +268,7 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'PMO',
             role: '進捗・課題管理、ドキュメント整備、会議運営の補佐',
             skills: ['進捗・課題管理', 'ドキュメント整備', '会議運営の補佐'],
-            certs: ['ITパスポート', '基本情報技術者', '認定スクラムマスター(CSM)'],
+            certs: ['ITパスポート試験', '基本情報技術者試験', '認定スクラムマスター(CSM)'],
           },
           PROFESSIONAL: {
             title: 'PL',
@@ -279,7 +279,7 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'PM',
             role: 'プロジェクト全体責任、予算・リスク管理、ステークホルダー調整',
             skills: ['プロジェクト全体責任', '予算・リスク管理', 'ステークホルダー調整'],
-            certs: ['プロジェクトマネージャ試験', 'PMP', 'ITサービスマネージャ'],
+            certs: ['プロジェクトマネージャ試験', 'PMP\u00AE (Project Management Professional)', 'ITサービスマネージャ試験'],
           },
         },
       },
@@ -297,25 +297,25 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'IT管理担当',
             role: 'IT機器キッティング・管理、アカウント管理、担当業務理解',
             skills: ['IT機器キッティング・管理', 'アカウント管理', '担当業務理解'],
-            certs: ['ITパスポート'],
+            certs: ['ITパスポート試験'],
           },
           ASSOCIATE: {
             title: 'IT運用・改善担当',
             role: 'ヘルプデスク対応、社内システム運用、ベンダー管理',
             skills: ['ヘルプデスク対応', '社内システム運用', 'ベンダー管理', 'RPA構築'],
-            certs: ['情報セキュリティマネジメント', 'RPA技術者検定'],
+            certs: ['情報セキュリティマネジメント試験', 'RPA技術者検定'],
           },
           PROFESSIONAL: {
             title: 'ITアドミン・DX推進',
             role: '社内IT環境の設計・改善、セキュリティポリシー運用',
             skills: ['社内IT環境の設計・改善', 'セキュリティポリシー運用', 'RPA・自動化推進'],
-            certs: ['基本情報技術者', 'AWS CLF', 'ITコーディネータ'],
+            certs: ['基本情報技術者試験', 'AWS Certified Cloud Practitioner', 'ITコーディネータ'],
           },
           EXPERT: {
             title: 'IT戦略・DX企画',
             role: 'IT投資計画、全社DX推進・システム刷新、情報セキュリティ戦略',
             skills: ['IT投資計画', '全社DX推進', '情報セキュリティ戦略'],
-            certs: ['応用情報技術者', 'ITストラテジスト', 'PMP'],
+            certs: ['応用情報技術者試験', 'ITストラテジスト試験', 'PMP\u00AE (Project Management Professional)'],
           },
         },
       },
@@ -326,25 +326,25 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'CS担当者',
             role: '問い合わせ対応、一次切り分け、FAQ整備',
             skills: ['問い合わせ対応', '一次切り分け', 'FAQ整備'],
-            certs: ['ITパスポート'],
+            certs: ['ITパスポート試験'],
           },
           ASSOCIATE: {
             title: 'CSアナリスト',
             role: '問い合わせ傾向の分析、FAQ高度化、対応品質の改善提案',
             skills: ['問い合わせ傾向の分析', 'FAQ高度化', '対応品質の改善提案'],
-            certs: ['情報セキュリティマネジメント', 'HDI-CSCA'],
+            certs: ['情報セキュリティマネジメント試験', 'HDI-CSCA'],
           },
           PROFESSIONAL: {
             title: 'CSスペシャリスト',
             role: '関係部門との連携、不具合エスカレーション、技術的な問題解決',
             skills: ['関係部門との連携', '不具合エスカレーション', '技術的な問題解決'],
-            certs: ['基本情報技術者', 'HDI-CSCTL'],
+            certs: ['基本情報技術者試験', 'HDI-CSCTL'],
           },
           EXPERT: {
             title: 'CS企画・推進',
             role: 'CS組織の設計、KPI策定、プロダクト改善への提言',
             skills: ['CS組織の設計', 'KPI策定', 'プロダクト改善への提言'],
-            certs: ['応用情報技術者', 'ITサービスマネージャ'],
+            certs: ['応用情報技術者試験', 'ITサービスマネージャ試験'],
           },
         },
       },
@@ -355,25 +355,25 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'データオペレーター',
             role: 'SQL・BIツール基礎、データ抽出・集計、レポート作成',
             skills: ['SQL・BIツール基礎', 'データ抽出・集計', 'レポート作成'],
-            certs: ['ITパスポート', 'Python基礎試験', 'AWS AIP'],
+            certs: ['ITパスポート試験', 'Pythonエンジニア認定基礎試験', 'AWS Certified AI Practitioner'],
           },
           ASSOCIATE: {
             title: 'データアナリスト',
             role: '分析手法・統計学を用い、仮説立案・可視化・課題発見',
             skills: ['分析手法・統計学', 'DWH理解', '仮説立案・可視化', '課題発見'],
-            certs: ['基本情報技術者', 'AWS DEA', '統計検定2級'],
+            certs: ['基本情報技術者試験', 'AWS Certified Data Engineer - Associate', '統計検定2級'],
           },
           PROFESSIONAL: {
             title: 'データコンサルタント',
             role: '改善提案・施策立案、クライアントへのプレゼン',
             skills: ['改善提案・施策立案', 'クライアントプレゼン', 'Python・機械学習基礎'],
-            certs: ['応用情報技術者', 'AWS MLA', '統計検定1級'],
+            certs: ['応用情報技術者試験', 'AWS Certified Machine Learning - Specialty', '統計検定1級'],
           },
           EXPERT: {
             title: 'データストラテジスト',
             role: 'クライアントのデータ戦略立案、データ基盤設計、データ活用推進',
             skills: ['データ戦略立案', 'データ基盤設計', 'データ活用推進'],
-            certs: ['DBスペシャリスト', 'AWS MLS', 'G検定・E資格'],
+            certs: ['データベーススペシャリスト試験', 'AWS Certified Machine Learning - Specialty', 'G検定・E資格'],
           },
         },
       },
@@ -384,7 +384,7 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'コンテンツ担当',
             role: 'コンテンツ制作、SEO基礎、Web・SNS運用',
             skills: ['コンテンツ制作', 'SEO基礎', 'Web・SNS運用'],
-            certs: ['ITパスポート', 'ウェブ解析士'],
+            certs: ['ITパスポート試験', 'ウェブ解析士'],
           },
           ASSOCIATE: {
             title: 'マーケター',
@@ -396,13 +396,13 @@ const TRACK_GROUPS: TrackGroupDef[] = [
             title: 'マーケティングプランナー',
             role: '施策企画・立案、マルチチャネル戦略、データに基づく改善提案',
             skills: ['施策企画・立案', 'マルチチャネル戦略', 'データに基づく改善'],
-            certs: ['GAIQ', 'HubSpot認定', 'Python基礎試験'],
+            certs: ['GAIQ', 'HubSpot認定', 'Pythonエンジニア認定基礎試験'],
           },
           EXPERT: {
             title: 'マーケティングストラテジスト',
             role: 'マーケ戦略立案、ブランディング、クライアントの市場戦略推進',
             skills: ['マーケ戦略立案', 'ブランディング', '市場戦略推進'],
-            certs: ['応用情報技術者', 'ITストラテジスト'],
+            certs: ['応用情報技術者試験', 'ITストラテジスト試験'],
           },
         },
       },
@@ -414,31 +414,38 @@ const TRACK_GROUPS: TrackGroupDef[] = [
 interface UndecidedEntry {
   groupId: string;
   trackIdx: number;
-  label: string;
+  groupName: string;
+  trackName: string;
   role: string;
+  description: string;
 }
 
 const ENTRY_LEVEL_LIST: UndecidedEntry[] = [
-  { groupId: 'qa', trackIdx: 0, label: 'QAエンジニア (マネジメント)', role: '実行者' },
-  { groupId: 'qa', trackIdx: 1, label: 'QAエンジニア (テスト自動化)', role: '実行者' },
-  { groupId: 'app', trackIdx: 0, label: 'ソフトウェアエンジニア', role: 'プログラマー' },
-  { groupId: 'infra', trackIdx: 0, label: 'クラウドインフラ', role: 'インフラオペレーター' },
-  { groupId: 'biz', trackIdx: 0, label: 'バックオフィス・DX推進', role: 'IT管理担当' },
-  { groupId: 'biz', trackIdx: 1, label: 'カスタマーサポート', role: 'CS担当者' },
-  { groupId: 'biz', trackIdx: 2, label: 'データアナリスト', role: 'データオペレーター' },
-  { groupId: 'biz', trackIdx: 3, label: 'マーケティング', role: 'コンテンツ担当' },
+  { groupId: 'qa', trackIdx: 0, groupName: 'QAエンジニア', trackName: 'マネジメント', role: '実行者', description: 'テスト仕様書に基づき、バグを確実に発見・報告' },
+  { groupId: 'qa', trackIdx: 1, groupName: 'QAエンジニア', trackName: 'テスト自動化', role: '実行者', description: 'テスト仕様書に基づき、バグを確実に発見・報告' },
+  { groupId: 'app', trackIdx: 0, groupName: 'アプリケーションエンジニア', trackName: 'ソフトウェアエンジニア', role: 'プログラマー', description: 'プログラミング基礎・バージョン管理' },
+  { groupId: 'infra', trackIdx: 0, groupName: 'クラウドインフラエンジニア', trackName: 'クラウドインフラ', role: 'インフラオペレーター', description: 'サーバ基本設定・運用' },
+  { groupId: 'biz', trackIdx: 0, groupName: 'ビジネス', trackName: 'バックオフィス', role: 'IT管理担当', description: 'IT機器キッティング・管理、アカウント管理' },
+  { groupId: 'biz', trackIdx: 1, groupName: 'ビジネス', trackName: 'CS', role: 'CS担当者', description: '問い合わせ対応、一次切り分け、FAQ整備' },
+  { groupId: 'biz', trackIdx: 2, groupName: 'ビジネス', trackName: 'データ', role: 'データオペレーター', description: 'SQL・BIツール基礎、データ抽出・集計' },
+  { groupId: 'biz', trackIdx: 3, groupName: 'ビジネス', trackName: 'マーケ', role: 'コンテンツ担当', description: 'コンテンツ制作、SEO基礎、Web・SNS運用' },
 ];
 
 const ASSOCIATE_LEVEL_LIST: UndecidedEntry[] = [
   ...ENTRY_LEVEL_LIST.map(e => {
-    // Find the associate title for the same track
     const group = TRACK_GROUPS.find(g => g.id === e.groupId);
     const track = group?.tracks[e.trackIdx];
     const assocCell = track?.cells.ASSOCIATE;
-    return { ...e, role: assocCell?.title ?? e.role };
+    return {
+      ...e,
+      role: assocCell?.title ?? e.role,
+      description: assocCell?.role ?? e.description,
+    };
   }),
-  { groupId: 'qa', trackIdx: 2, label: 'QAエンジニア (セキュリティ)', role: '侵害分析' },
-  { groupId: 'pm', trackIdx: 0, label: 'PM', role: 'PMO' },
+  { groupId: 'qa', trackIdx: 2, groupName: 'QAエンジニア', trackName: 'セキュリティ', role: '侵害分析', description: '代表的な脆弱性を理解し、脆弱性の再現確認やリスク説明ができる' },
+  { groupId: 'pm', trackIdx: 0, groupName: 'PM', trackName: 'PM', role: 'PMO', description: '進捗・課題管理、ドキュメント整備、会議運営の補佐' },
+  { groupId: 'app', trackIdx: 1, groupName: 'アプリケーションエンジニア', trackName: 'アーキテクチャ', role: 'テックリード', description: 'アーキテクチャ設計・技術選定・チームの技術指導' },
+  { groupId: 'infra', trackIdx: 1, groupName: 'クラウドインフラエンジニア', trackName: 'セキュリティ', role: 'セキュリティエンジニア', description: '防御設計・アクセス制御・インシデント対応' },
 ];
 
 // ── Helpers ──
@@ -688,24 +695,30 @@ export default function CareerMapPage() {
             onClick={() => setShowEntryList(!showEntryList)}
             style={s.undecidedToggle}
           >
-            <span>{showEntryList ? '▼' : '▶'}</span>
-            <span style={{ marginLeft: 8 }}>Entry レベルの職種一覧</span>
+            <span>{showEntryList ? '\u25BC' : '\u25B6'}</span>
+            <span style={{ marginLeft: 8 }}>Entry レベル（半年〜1年）の職種一覧</span>
           </button>
           {showEntryList && (
             <div style={s.undecidedGrid}>
-              {ENTRY_LEVEL_LIST.map((entry, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleUndecidedCardClick(entry)}
-                  style={{
-                    ...s.undecidedCard,
-                    borderLeftColor: TRACK_GROUPS.find(g => g.id === entry.groupId)?.color ?? '#ccc',
-                  }}
-                >
-                  <div style={s.undecidedCardLabel}>{entry.label}</div>
-                  <div style={s.undecidedCardRole}>{entry.role}</div>
-                </button>
-              ))}
+              {ENTRY_LEVEL_LIST.map((entry, idx) => {
+                const groupColor = TRACK_GROUPS.find(g => g.id === entry.groupId)?.color ?? '#ccc';
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleUndecidedCardClick(entry)}
+                    style={{
+                      ...s.undecidedCard,
+                      borderLeft: `4px solid ${groupColor}`,
+                    }}
+                  >
+                    <div style={{ ...s.undecidedCardGroup, color: groupColor }}>
+                      {entry.groupName} / {entry.trackName}
+                    </div>
+                    <div style={s.undecidedCardLabel}>{entry.role}</div>
+                    <div style={s.undecidedCardRole}>{entry.description}</div>
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -713,24 +726,30 @@ export default function CareerMapPage() {
             onClick={() => setShowAssociateList(!showAssociateList)}
             style={{ ...s.undecidedToggle, marginTop: 8 }}
           >
-            <span>{showAssociateList ? '▼' : '▶'}</span>
-            <span style={{ marginLeft: 8 }}>Associate レベルの職種一覧</span>
+            <span>{showAssociateList ? '\u25BC' : '\u25B6'}</span>
+            <span style={{ marginLeft: 8 }}>Associate レベル（1〜3年）の職種一覧</span>
           </button>
           {showAssociateList && (
             <div style={s.undecidedGrid}>
-              {ASSOCIATE_LEVEL_LIST.map((entry, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleUndecidedCardClick(entry)}
-                  style={{
-                    ...s.undecidedCard,
-                    borderLeftColor: TRACK_GROUPS.find(g => g.id === entry.groupId)?.color ?? '#ccc',
-                  }}
-                >
-                  <div style={s.undecidedCardLabel}>{entry.label}</div>
-                  <div style={s.undecidedCardRole}>{entry.role}</div>
-                </button>
-              ))}
+              {ASSOCIATE_LEVEL_LIST.map((entry, idx) => {
+                const groupColor = TRACK_GROUPS.find(g => g.id === entry.groupId)?.color ?? '#ccc';
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => handleUndecidedCardClick(entry)}
+                    style={{
+                      ...s.undecidedCard,
+                      borderLeft: `4px solid ${groupColor}`,
+                    }}
+                  >
+                    <div style={{ ...s.undecidedCardGroup, color: groupColor }}>
+                      {entry.groupName} / {entry.trackName}
+                    </div>
+                    <div style={s.undecidedCardLabel}>{entry.role}</div>
+                    <div style={s.undecidedCardRole}>{entry.description}</div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -799,46 +818,43 @@ export default function CareerMapPage() {
           <div style={{
             ...s.routeRow,
             flexDirection: isMobile ? 'column' : 'row',
-            flexWrap: isMobile ? undefined : 'nowrap' as const,
-            overflowX: isMobile ? undefined : 'auto' as const,
-            gap: isMobile ? 0 : 8,
             alignItems: isMobile ? 'stretch' : 'stretch',
           }}>
-            {STAGE_KEYS.map((stageKey, idx) => {
-              const isAcademia = stageKey === 'ACADEMIA';
-              const cell = isAcademia ? ACADEMIA_CELL : selectedTrack.cells[stageKey];
-              if (!cell && !isAcademia) return null;
-              if (!cell) return null;
-
-              return (
-                <div key={stageKey} style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  flexShrink: isMobile ? 0 : 1,
-                  minWidth: isMobile ? undefined : 150,
-                  flexDirection: isMobile ? 'column' : 'row',
-                }}>
-                  {/* Arrow before card (except first) */}
-                  {idx > 0 && (
-                    <div style={{
-                      ...s.routeArrow,
-                      color: selectedGroup.color,
-                      margin: isMobile ? '4px 0' : '0 4px',
+            {(() => {
+              const cells = STAGE_KEYS
+                .map(sk => ({ stageKey: sk, cell: sk === 'ACADEMIA' ? ACADEMIA_CELL : selectedTrack.cells[sk] }))
+                .filter(item => item.cell != null);
+              const items: React.ReactNode[] = [];
+              cells.forEach((item, idx) => {
+                const { stageKey, cell } = item;
+                if (!cell) return;
+                if (idx > 0) {
+                  items.push(
+                    <div key={`arrow-${stageKey}`} style={{
+                      flex: '0 0 24px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}>
-                      {isMobile ? '\u25BC' : '\u25B6'}
+                      <span style={{ fontSize: 18, color: selectedGroup.color, fontWeight: 700 }}>
+                        {isMobile ? '\u25BC' : '\u2192'}
+                      </span>
                     </div>
-                  )}
-                  {/* Route card */}
+                  );
+                }
+                items.push(
                   <div
+                    key={stageKey}
                     onClick={() => setModalStageKey(stageKey)}
                     style={{
                       ...s.routeCard,
                       borderTopColor: selectedGroup.color,
                       cursor: 'pointer',
+                      flex: isMobile ? undefined : '1 1 0',
+                      minWidth: 0,
                       width: isMobile ? '100%' : undefined,
-                      maxWidth: isMobile ? undefined : 180,
-                      minWidth: isMobile ? undefined : 150,
-                      flexShrink: 1,
+                      padding: 16,
+                      borderRadius: 12,
                     }}
                   >
                     <span style={{ ...s.levelBadge, background: `${selectedGroup.color}18`, color: selectedGroup.color }}>
@@ -849,12 +865,13 @@ export default function CareerMapPage() {
                       {cell.role.length > 50 ? cell.role.slice(0, 50) + '...' : cell.role}
                     </div>
                     <div style={{ ...s.routeCardHint, color: selectedGroup.color }}>
-                      詳細を見る →
+                      詳細を見る &rarr;
                     </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              });
+              return items;
+            })()}
           </div>
 
           {/* Scope button */}
@@ -1074,35 +1091,39 @@ const s: Record<string, CSSProperties> = {
     textAlign: 'left' as const,
   },
   undecidedGrid: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: 8,
-    padding: '10px 0 4px 8px',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+    gap: 10,
+    padding: '12px 0 4px 0',
   },
   undecidedCard: {
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'flex-start',
-    gap: 2,
-    padding: '8px 12px',
+    gap: 4,
+    padding: '10px 14px',
     background: '#fff',
-    borderRadius: 8,
-    borderLeft: '3px solid',
+    borderRadius: 10,
     border: '1px solid #e2e8f0',
     cursor: 'pointer',
     fontSize: 13,
     textAlign: 'left' as const,
-    minWidth: 140,
+  },
+  undecidedCardGroup: {
+    fontSize: 11,
+    fontWeight: 600,
+    letterSpacing: 0.3,
   },
   undecidedCardLabel: {
     fontWeight: 700,
     color: DEEP_BLUE,
-    fontSize: 13,
+    fontSize: 14,
   },
   undecidedCardRole: {
     fontWeight: 500,
     color: '#64748b',
     fontSize: 12,
+    lineHeight: 1.4,
   },
 
   groupGrid: {
@@ -1178,13 +1199,8 @@ const s: Record<string, CSSProperties> = {
   routeRow: {
     display: 'flex',
     alignItems: 'stretch',
-    gap: 8,
+    gap: 0,
     marginBottom: 20,
-  },
-  routeArrow: {
-    fontSize: 16,
-    flexShrink: 0,
-    alignSelf: 'center',
   },
   routeCard: {
     background: '#fff',
