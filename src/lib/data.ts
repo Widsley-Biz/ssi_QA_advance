@@ -348,18 +348,31 @@ export async function deleteInvitation(id: number): Promise<void> {
   }
 }
 
-export async function sendInviteEmail(email: string, appUrl: string): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    // Use Supabase Auth's invite method to send magic link
-    const { error } = await sb.auth.admin.inviteUserByEmail(email, {
-      redirectTo: appUrl,
+const GAS_INVITE_URL = 'https://script.google.com/a/macros/widsley.com/s/AKfycbwtSswuooeOs_cJRenwadMaURfUQ4OSxUYfw2GCr1XpiaW-XCWxSpGjgAg5Inz9rmCX/exec';
+
+export async function sendInviteEmail(
+  email: string,
+  role: string,
+  teamName: string,
+  appUrl = 'https://app-two-gamma-56.vercel.app',
+): Promise<{ success: boolean }> {
+  const roleLabelMap: Record<string, string> = { member: 'メンバー', leader: 'リーダー', board: '管理者' };
+  try {
+    await fetch(GAS_INVITE_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        email,
+        role: roleLabelMap[role] ?? role,
+        team: teamName || '未割当',
+        appUrl,
+      }),
     });
-    // If admin invite fails (e.g., no service_role key), fall back silently
-    // The user can still log in via Google OAuth directly
-    if (error) {
-      console.warn('Admin invite email failed (expected if using anon key):', error.message);
-    }
+    // no-cors returns opaque response, so we assume success if no error thrown
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to send invite email:', err);
+    return { success: false };
   }
 }

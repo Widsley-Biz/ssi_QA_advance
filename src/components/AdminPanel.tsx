@@ -15,6 +15,7 @@ import {
   fetchInvitations,
   createInvitation,
   deleteInvitation,
+  sendInviteEmail,
 } from '../lib/data';
 import type { Invitation } from '../lib/data';
 
@@ -738,10 +739,14 @@ function InviteManagement() {
         teamId ? Number(teamId) : null,
         user?.id ?? '',
       );
+      // Send invite email via Google Apps Script
+      const teamName = teamId ? teams.find(t => t.id === Number(teamId))?.name ?? '' : '';
+      await sendInviteEmail(email.trim(), role, teamName);
+
       setEmail('');
       setRole('member');
       setTeamId('');
-      setFeedback('招待を登録しました。ユーザーにアプリURLを共有してください。');
+      setFeedback('招待を登録し、招待メールを送信しました。');
       await loadData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '招待の登録に失敗しました';
@@ -824,8 +829,8 @@ function InviteManagement() {
           </div>
         )}
         <div style={{ marginTop: 10, fontSize: 12, color: '#999', lineHeight: 1.5 }}>
-          招待を登録すると、ユーザーが初回Googleログイン時に自動的にロール・チームが設定されます。<br />
-          アプリURL（https://app-two-gamma-56.vercel.app）をメールやSlackで共有してください。
+          招待登録と同時に招待メールが自動送信されます。<br />
+          ユーザーが初回Googleログイン時に自動的にロール・チームが設定されます。
         </div>
       </div>
 
