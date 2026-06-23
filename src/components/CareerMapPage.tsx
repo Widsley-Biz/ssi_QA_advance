@@ -5,47 +5,88 @@ import type { CSSProperties } from 'react';
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
+const MAGENTA = '#E21776';
 
-// ── Stage definitions ──
+// ── Types ──
 type StageKey = 'ACADEMIA' | 'ENTRY' | 'ASSOCIATE' | 'PROFESSIONAL' | 'EXPERT';
 
-interface Stage {
+interface StageInfo {
   key: StageKey;
   label: string;
+  sublabel: string;
   period: string;
+  description: string;
+  gradient: string;
 }
 
-const STAGES: Stage[] = [
-  { key: 'ACADEMIA', label: 'ACADEMIA', period: '入社〜半年' },
-  { key: 'ENTRY', label: 'ENTRY', period: '半年〜1年' },
-  { key: 'ASSOCIATE', label: 'ASSOCIATE', period: '1〜3年' },
-  { key: 'PROFESSIONAL', label: 'PROFESSIONAL', period: '3〜5年' },
-  { key: 'EXPERT', label: 'EXPERT', period: '5年〜' },
-];
-
-// ── Cell data ──
-interface CellData {
+interface TrackCard {
+  trackGroupId: string;
+  trackName: string;
+  trackColor: string;
+  stage: StageKey;
   title: string;
   skills: string;
   certs?: string;
+  /** unique id: groupId:trackIdx */
+  cardId: string;
 }
 
-type StageCells = Partial<Record<StageKey, CellData>>;
+// ── Stage definitions ──
+const STAGES: StageInfo[] = [
+  {
+    key: 'ACADEMIA',
+    label: 'ACADEMIA',
+    sublabel: 'IT未経験者',
+    period: '0〜半年',
+    description: 'アカデミア生として教育カリキュラムスコープ内',
+    gradient: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
+  },
+  {
+    key: 'ENTRY',
+    label: 'ENTRY',
+    sublabel: 'IT初心者',
+    period: '半年〜1年',
+    description: '進みたい方向性を決めていない状態。どの分野でも役立つ学習/経験',
+    gradient: `linear-gradient(135deg, ${CYAN} 0%, #2196F3 100%)`,
+  },
+  {
+    key: 'ASSOCIATE',
+    label: 'ASSOCIATE',
+    sublabel: 'IT中級者',
+    period: '1〜3年',
+    description: '専門性高めれる学習をするか、共通スキルの習得に努める',
+    gradient: `linear-gradient(135deg, ${SEA_GREEN} 0%, #26a69a 100%)`,
+  },
+  {
+    key: 'PROFESSIONAL',
+    label: 'PROFESSIONAL',
+    sublabel: 'IT上級者',
+    period: '3〜5年',
+    description: '専門性を決めて、その領域の特化スキルを習熟',
+    gradient: `linear-gradient(135deg, ${MAGENTA} 0%, #c2185b 100%)`,
+  },
+  {
+    key: 'EXPERT',
+    label: 'EXPERT',
+    sublabel: 'ITエキスパート',
+    period: '5年〜',
+    description: '「この人に任せれば問題ない」の領域',
+    gradient: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+  },
+];
 
-interface Track {
-  name: string;
-  cells: StageCells;
-}
-
-interface TrackGroup {
+// ── Track group definitions ──
+interface TrackGroupDef {
   id: string;
   name: string;
   color: string;
-  tracks: Track[];
+  tracks: {
+    name: string;
+    cells: Partial<Record<StageKey, { title: string; skills: string; certs?: string }>>;
+  }[];
 }
 
-// ── Career data ──
-const TRACK_GROUPS: TrackGroup[] = [
+const TRACK_GROUPS: TrackGroupDef[] = [
   {
     id: 'qa',
     name: 'QAエンジニア',
@@ -54,7 +95,7 @@ const TRACK_GROUPS: TrackGroup[] = [
       {
         name: 'QAエンジニア',
         cells: {
-          ACADEMIA: { title: 'QA基礎', skills: '社会人基礎力／QA基礎知識／テスト技法理解／テスト実施（指導下）', certs: 'JSTQB FL' },
+          ACADEMIA: { title: 'QA基礎', skills: '社会人基礎力／QA基礎知識／テスト技法理解', certs: 'JSTQB FL' },
           ENTRY: { title: '実行者', skills: 'テスト技法の基礎／Jira等バグ管理ツール／不具合起票', certs: 'IVEC アシスタント' },
           ASSOCIATE: { title: '設計者', skills: '高度なテスト設計技法／基本的な自動化ツール運用', certs: 'JSTQB TA / JCSQE初級' },
           PROFESSIONAL: { title: '推進者', skills: 'テスト戦略の策定／自動化フレームワーク構築', certs: 'JSTQB TM / JCSQE中級' },
@@ -134,8 +175,8 @@ const TRACK_GROUPS: TrackGroup[] = [
       {
         name: 'PM',
         cells: {
-          ASSOCIATE: { title: 'PMO', skills: 'プロジェクト管理補佐', certs: '' },
-          PROFESSIONAL: { title: 'PL', skills: '各領域リーダー', certs: '' },
+          ASSOCIATE: { title: 'PMO', skills: 'プロジェクト管理補佐' },
+          PROFESSIONAL: { title: 'PL', skills: '各領域リーダー' },
           EXPERT: { title: 'PM', skills: 'プロジェクト統括', certs: 'PMP / ITサービスマネージャ' },
         },
       },
@@ -149,230 +190,440 @@ const TRACK_GROUPS: TrackGroup[] = [
       {
         name: 'バックオフィス・DX推進',
         cells: {
-          ENTRY: { title: 'IT管理担当', skills: 'IT資産管理／ヘルプデスク', certs: '' },
-          ASSOCIATE: { title: 'IT運用・改善担当', skills: '業務プロセス改善', certs: '' },
-          PROFESSIONAL: { title: 'ITアドミン・DX推進', skills: 'DXプロジェクト推進', certs: '' },
-          EXPERT: { title: 'IT戦略・DX企画', skills: '全社IT戦略立案', certs: '' },
+          ENTRY: { title: 'IT管理担当', skills: 'IT資産管理／ヘルプデスク' },
+          ASSOCIATE: { title: 'IT運用・改善担当', skills: '業務プロセス改善' },
+          PROFESSIONAL: { title: 'ITアドミン・DX推進', skills: 'DXプロジェクト推進' },
+          EXPERT: { title: 'IT戦略・DX企画', skills: '全社IT戦略立案' },
         },
       },
       {
         name: 'カスタマーサポート',
         cells: {
-          ENTRY: { title: 'サポート担当', skills: '問合せ対応', certs: '' },
-          ASSOCIATE: { title: 'シニアサポート', skills: 'エスカレーション対応', certs: '' },
-          PROFESSIONAL: { title: 'サポートリーダー', skills: 'チーム管理・改善', certs: '' },
-          EXPERT: { title: 'CS責任者', skills: '顧客体験戦略', certs: '' },
+          ENTRY: { title: 'CS担当者', skills: '問合せ対応' },
+          ASSOCIATE: { title: 'CSアナリスト', skills: 'エスカレーション対応' },
+          PROFESSIONAL: { title: 'CSスペシャリスト', skills: 'チーム管理・改善' },
+          EXPERT: { title: 'CS企画・推進', skills: '顧客体験戦略' },
         },
       },
       {
         name: 'データアナリスト',
         cells: {
-          ENTRY: { title: 'データ収集担当', skills: 'データ抽出・集計', certs: '' },
-          ASSOCIATE: { title: 'ジュニアアナリスト', skills: '分析・可視化', certs: '' },
-          PROFESSIONAL: { title: 'シニアアナリスト', skills: '高度分析・提言', certs: '' },
-          EXPERT: { title: 'データストラテジスト', skills: 'データ戦略立案', certs: '' },
+          ENTRY: { title: 'データオペレーター', skills: 'データ抽出・集計' },
+          ASSOCIATE: { title: 'データアナリスト', skills: '分析・可視化' },
+          PROFESSIONAL: { title: 'データコンサルタント', skills: '高度分析・提言' },
+          EXPERT: { title: 'データストラテジスト', skills: 'データ戦略立案' },
         },
       },
       {
         name: 'マーケティング',
         cells: {
-          ENTRY: { title: 'マーケ担当', skills: '施策実行補助', certs: '' },
-          ASSOCIATE: { title: 'マーケター', skills: '施策企画・実行', certs: '' },
-          PROFESSIONAL: { title: 'シニアマーケター', skills: '戦略立案', certs: '' },
-          EXPERT: { title: 'マーケ責任者', skills: '全社マーケ統括', certs: '' },
+          ENTRY: { title: 'コンテンツ担当', skills: '施策実行補助' },
+          ASSOCIATE: { title: 'マーケター', skills: '施策企画・実行' },
+          PROFESSIONAL: { title: 'マーケティングプランナー', skills: '戦略立案' },
+          EXPERT: { title: 'マーケティングストラテジスト', skills: '全社マーケ統括' },
         },
       },
     ],
   },
 ];
 
-// ── Stage arrow colors ──
-const STAGE_COLORS: Record<StageKey, string> = {
-  ACADEMIA: '#6B7280',
-  ENTRY: CYAN,
-  ASSOCIATE: SEA_GREEN,
-  PROFESSIONAL: '#E21776',
-  EXPERT: '#8B5CF6',
-};
+// ── Build flat card list per stage ──
+function buildStageCards(): Record<StageKey, TrackCard[]> {
+  const result: Record<StageKey, TrackCard[]> = {
+    ACADEMIA: [],
+    ENTRY: [],
+    ASSOCIATE: [],
+    PROFESSIONAL: [],
+    EXPERT: [],
+  };
+
+  for (const group of TRACK_GROUPS) {
+    for (let tIdx = 0; tIdx < group.tracks.length; tIdx++) {
+      const track = group.tracks[tIdx];
+      const cardId = `${group.id}:${tIdx}`;
+      for (const stageKey of Object.keys(track.cells) as StageKey[]) {
+        const cell = track.cells[stageKey];
+        if (!cell) continue;
+        result[stageKey].push({
+          trackGroupId: group.id,
+          trackName: track.name,
+          trackColor: group.color,
+          stage: stageKey,
+          title: cell.title,
+          skills: cell.skills,
+          certs: cell.certs,
+          cardId,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+const STAGE_CARDS = buildStageCards();
+
+// ── Helper: get all cardIds for a group ──
+function _getGroupCardIds(groupId: string): string[] {
+  const ids: string[] = [];
+  const group = TRACK_GROUPS.find(g => g.id === groupId);
+  if (!group) return ids;
+  for (let i = 0; i < group.tracks.length; i++) {
+    ids.push(`${groupId}:${i}`);
+  }
+  return ids;
+}
+
+// ── Helper: get connecting stages for a cardId ──
+function getCardStages(cardId: string): StageKey[] {
+  const [groupId, trackIdxStr] = cardId.split(':');
+  const trackIdx = parseInt(trackIdxStr, 10);
+  const group = TRACK_GROUPS.find(g => g.id === groupId);
+  if (!group || !group.tracks[trackIdx]) return [];
+  return Object.keys(group.tracks[trackIdx].cells) as StageKey[];
+}
 
 // ── Component ──
 export default function CareerMapPage() {
-  const [selectedTracks, setSelectedTracks] = useState<Set<string>>(new Set());
+  const [selectedCards, setSelectedCards] = useState<Set<string>>(new Set());
+  const [activeGroupFilter, setActiveGroupFilter] = useState<string | null>(null);
+  const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
-  const toggleTrack = (trackId: string) => {
-    setSelectedTracks(prev => {
+  const toggleCard = (cardId: string) => {
+    setSelectedCards(prev => {
       const next = new Set(prev);
-      if (next.has(trackId)) {
-        next.delete(trackId);
+      if (next.has(cardId)) {
+        next.delete(cardId);
       } else {
-        next.add(trackId);
+        next.add(cardId);
       }
       return next;
     });
   };
 
-  const clearSelection = () => setSelectedTracks(new Set());
-
-  const hasSelection = selectedTracks.size > 0;
-
-  const isTrackSelected = (groupId: string, trackIdx: number) => {
-    return selectedTracks.has(`${groupId}:${trackIdx}`);
+  const clearSelection = () => {
+    setSelectedCards(new Set());
+    setActiveGroupFilter(null);
   };
 
-  const getTrackOpacity = (groupId: string, trackIdx: number): number => {
-    if (!hasSelection) return 1;
-    return isTrackSelected(groupId, trackIdx) ? 1 : 0.2;
+  const toggleGroupFilter = (groupId: string) => {
+    setActiveGroupFilter(prev => (prev === groupId ? null : groupId));
+  };
+
+  const hasSelection = selectedCards.size > 0;
+
+  // Determine if a card should be highlighted
+  const isCardHighlighted = (card: TrackCard): boolean => {
+    if (activeGroupFilter) return card.trackGroupId === activeGroupFilter;
+    if (hasSelection) return selectedCards.has(card.cardId);
+    return false;
+  };
+
+  const getCardOpacity = (card: TrackCard): number => {
+    if (!hasSelection && !activeGroupFilter) return 1;
+    return isCardHighlighted(card) ? 1 : 0.35;
+  };
+
+  // Build selected path summary
+  const selectedPathCards: TrackCard[] = [];
+  if (hasSelection) {
+    for (const stage of STAGES) {
+      for (const card of STAGE_CARDS[stage.key]) {
+        if (selectedCards.has(card.cardId)) {
+          selectedPathCards.push(card);
+        }
+      }
+    }
+  }
+
+  // Check if a connector between two stages should be highlighted for a given cardId
+  const isConnectorHighlighted = (cardId: string, fromStage: StageKey, toStage: StageKey): boolean => {
+    const stages = getCardStages(cardId);
+    const stageOrder: StageKey[] = ['ACADEMIA', 'ENTRY', 'ASSOCIATE', 'PROFESSIONAL', 'EXPERT'];
+    const fromIdx = stageOrder.indexOf(fromStage);
+    const toIdx = stageOrder.indexOf(toStage);
+    if (fromIdx === -1 || toIdx === -1) return false;
+    // Check if both stages (or stages between) contain this track
+    const hasFrom = stages.includes(fromStage);
+    const hasTo = stages.includes(toStage);
+    return hasFrom && hasTo;
+  };
+
+  // Get connector color between stages for a given card
+  const getConnectorInfo = (fromStageKey: StageKey, toStageKey: StageKey): { color: string; active: boolean }[] => {
+    const connectors: { color: string; active: boolean }[] = [];
+    const allCardIds = new Set<string>();
+
+    // Collect all unique cardIds that span both stages
+    for (const card of STAGE_CARDS[fromStageKey]) {
+      allCardIds.add(card.cardId);
+    }
+
+    for (const cardId of allCardIds) {
+      if (isConnectorHighlighted(cardId, fromStageKey, toStageKey)) {
+        const [groupId] = cardId.split(':');
+        const group = TRACK_GROUPS.find(g => g.id === groupId);
+        const isActive = activeGroupFilter
+          ? groupId === activeGroupFilter
+          : hasSelection
+            ? selectedCards.has(cardId)
+            : false;
+        if (group) {
+          connectors.push({ color: group.color, active: isActive });
+        }
+      }
+    }
+
+    return connectors;
   };
 
   return (
-    <div style={s.page}>
-      <div style={s.titleBar}>
-        <h1 style={s.title}>Career Map</h1>
-        <p style={s.subtitle}>Widsley エンジニア キャリアロードマップ</p>
+    <div style={styles.page}>
+      {/* Title */}
+      <div style={styles.titleBar}>
+        <h1 style={styles.title}>Career Roadmap</h1>
+        <p style={styles.subtitle}>Widsley エンジニア キャリアロードマップ</p>
       </div>
 
-      {/* Track selector */}
-      <div style={s.selectorBar}>
-        <span style={s.selectorLabel}>トラック選択:</span>
-        <div style={s.chips}>
-          {TRACK_GROUPS.map(group =>
-            group.tracks.map((track, tIdx) => {
-              const id = `${group.id}:${tIdx}`;
-              const active = selectedTracks.has(id);
-              return (
-                <button
-                  key={id}
-                  onClick={() => toggleTrack(id)}
+      {/* Group filter chips */}
+      <div style={styles.filterBar}>
+        <span style={styles.filterLabel}>トラック:</span>
+        <div style={styles.filterChips}>
+          {TRACK_GROUPS.map(group => {
+            const isActive = activeGroupFilter === group.id;
+            return (
+              <button
+                key={group.id}
+                onClick={() => toggleGroupFilter(group.id)}
+                style={{
+                  ...styles.filterChip,
+                  background: isActive ? group.color : '#f1f5f9',
+                  color: isActive ? '#fff' : '#475569',
+                  borderColor: isActive ? group.color : '#cbd5e1',
+                  fontWeight: isActive ? 700 : 500,
+                }}
+              >
+                <span
                   style={{
-                    ...s.chip,
-                    background: active ? group.color : '#f1f5f9',
-                    color: active ? '#fff' : '#64748b',
-                    borderColor: active ? group.color : '#cbd5e1',
+                    display: 'inline-block',
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: group.color,
+                    marginRight: 6,
+                    opacity: isActive ? 0 : 1,
                   }}
-                >
-                  {track.name}
-                </button>
-              );
-            })
-          )}
-          {hasSelection && (
-            <button onClick={clearSelection} style={s.clearBtn}>
+                />
+                {group.name}
+              </button>
+            );
+          })}
+          {(hasSelection || activeGroupFilter) && (
+            <button onClick={clearSelection} style={styles.clearBtn}>
               クリア
             </button>
           )}
         </div>
       </div>
 
-      {/* Scrollable grid */}
-      <div style={s.scrollContainer}>
-        <div style={s.grid}>
-          {/* Stage headers */}
-          <div style={s.headerRow}>
-            <div style={s.rowLabel} />
-            {STAGES.map((stage, i) => (
-              <div key={stage.key} style={s.stageHeaderCell}>
+      {/* Roadmap flow */}
+      <div style={styles.roadmap}>
+        {STAGES.map((stage, stageIdx) => (
+          <div key={stage.key}>
+            {/* Stage header */}
+            <div style={{ ...styles.stageSection }}>
+              <div style={{ ...styles.stageHeader, background: stage.gradient }}>
+                <div style={styles.stageHeaderTop}>
+                  <span style={styles.stageName}>{stage.label}</span>
+                  <span style={styles.stageBadge}>
+                    {stage.sublabel} {stage.period}
+                  </span>
+                </div>
+                <p style={styles.stageDesc}>{stage.description}</p>
+              </div>
+
+              {/* Cards for this stage */}
+              {stage.key === 'ACADEMIA' ? (
+                // ACADEMIA: single wide card
+                <div style={styles.academiaCardWrap}>
+                  {STAGE_CARDS.ACADEMIA.map(card => {
+                    const opacity = getCardOpacity(card);
+                    const highlighted = isCardHighlighted(card);
+                    return (
+                      <div
+                        key={card.cardId + card.title}
+                        onClick={() => toggleCard(card.cardId)}
+                        onMouseEnter={() => setHoveredCard(card.cardId)}
+                        onMouseLeave={() => setHoveredCard(null)}
+                        style={{
+                          ...styles.academiaCard,
+                          borderLeft: `5px solid ${card.trackColor}`,
+                          opacity,
+                          boxShadow: highlighted
+                            ? `0 0 0 2px ${card.trackColor}, 0 4px 20px ${card.trackColor}40`
+                            : hoveredCard === card.cardId
+                              ? '0 4px 16px rgba(0,0,0,0.12)'
+                              : '0 2px 8px rgba(0,0,0,0.06)',
+                          transform: hoveredCard === card.cardId ? 'translateY(-1px)' : 'none',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <div style={styles.cardTitle}>{card.title}</div>
+                        <div style={{ ...styles.cardGroup, color: card.trackColor }}>{card.trackName}</div>
+                        <div style={styles.cardSkills}>{card.skills}</div>
+                        {card.certs && <div style={styles.cardCerts}>{card.certs}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                // Other stages: cards in a flex grid
+                <div style={styles.cardsGrid}>
+                  {STAGE_CARDS[stage.key].map(card => {
+                    const opacity = getCardOpacity(card);
+                    const highlighted = isCardHighlighted(card);
+                    return (
+                      <div
+                        key={card.cardId + card.title}
+                        onClick={() => toggleCard(card.cardId)}
+                        onMouseEnter={() => setHoveredCard(card.cardId)}
+                        onMouseLeave={() => setHoveredCard(null)}
+                        style={{
+                          ...styles.trackCard,
+                          borderLeft: `5px solid ${card.trackColor}`,
+                          opacity,
+                          boxShadow: highlighted
+                            ? `0 0 0 2px ${card.trackColor}, 0 4px 20px ${card.trackColor}40`
+                            : hoveredCard === card.cardId
+                              ? '0 4px 16px rgba(0,0,0,0.12)'
+                              : '0 2px 8px rgba(0,0,0,0.06)',
+                          transform: hoveredCard === card.cardId ? 'translateY(-1px)' : 'none',
+                          transition: 'all 0.2s ease',
+                        }}
+                      >
+                        <div style={styles.cardTitle}>{card.title}</div>
+                        <div style={{ ...styles.cardGroup, color: card.trackColor }}>{card.trackName}</div>
+                        <div style={styles.cardSkills}>{card.skills}</div>
+                        {card.certs && <div style={styles.cardCerts}>{card.certs}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Connector lines between stages */}
+            {stageIdx < STAGES.length - 1 && (
+              <div style={styles.connectorSection}>
+                {(() => {
+                  const nextStage = STAGES[stageIdx + 1];
+                  const connectors = getConnectorInfo(stage.key, nextStage.key);
+                  const hasActiveConnector = connectors.some(c => c.active);
+                  return (
+                    <div style={styles.connectorRow}>
+                      {connectors.length > 0 ? (
+                        connectors.map((conn, ci) => (
+                          <div
+                            key={ci}
+                            style={{
+                              width: 3,
+                              height: 40,
+                              borderRadius: 2,
+                              background: conn.active ? conn.color : hasActiveConnector ? '#e2e8f055' : '#cbd5e1',
+                              margin: '0 4px',
+                              transition: 'all 0.25s ease',
+                              opacity: conn.active ? 1 : hasActiveConnector ? 0.3 : 0.5,
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <div
+                          style={{
+                            width: 3,
+                            height: 40,
+                            borderRadius: 2,
+                            background: '#cbd5e1',
+                            opacity: 0.5,
+                          }}
+                        />
+                      )}
+                      {/* Arrow indicator */}
+                      <div style={styles.arrowDown}>
+                        <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+                          <path
+                            d="M7 10L0.5 0H13.5L7 10Z"
+                            fill={
+                              hasActiveConnector
+                                ? connectors.find(c => c.active)?.color ?? '#cbd5e1'
+                                : '#cbd5e1'
+                            }
+                            opacity={hasActiveConnector ? 1 : 0.5}
+                          />
+                        </svg>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Floating selected route summary */}
+      {hasSelection && (
+        <div style={styles.summaryPanel}>
+          <div style={styles.summaryHeader}>
+            <span style={styles.summaryTitle}>選択中のルート</span>
+            <button onClick={clearSelection} style={styles.summaryClear}>
+              クリア
+            </button>
+          </div>
+          <div style={styles.summaryCards}>
+            {selectedPathCards.map((card, idx) => (
+              <div key={card.cardId + card.stage} style={styles.summaryItem}>
                 <div
                   style={{
-                    ...s.arrow,
-                    background: STAGE_COLORS[stage.key],
-                    clipPath:
-                      i < STAGES.length - 1
-                        ? 'polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%, 16px 50%)'
-                        : 'polygon(0 0, 100% 0, 100% 100%, 0 100%, 16px 50%)',
-                    ...(i === 0
-                      ? { clipPath: 'polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%)' }
-                      : {}),
+                    ...styles.summaryDot,
+                    background: card.trackColor,
                   }}
-                >
-                  <span style={s.arrowLabel}>{stage.label}</span>
+                />
+                <div style={styles.summaryInfo}>
+                  <span style={styles.summaryStage}>{card.stage}</span>
+                  <span style={styles.summaryRole}>{card.title}</span>
+                  <span style={{ ...styles.summaryTrack, color: card.trackColor }}>{card.trackName}</span>
                 </div>
-                <span style={s.period}>{stage.period}</span>
+                {idx < selectedPathCards.length - 1 && (
+                  <div style={styles.summaryArrow}>→</div>
+                )}
               </div>
             ))}
           </div>
-
-          {/* Track groups */}
-          {TRACK_GROUPS.map(group => (
-            <div key={group.id} style={s.groupBlock}>
-              {/* Group banner */}
-              <div style={{ ...s.groupBanner, background: group.color }}>
-                {group.name}
-              </div>
-
-              {/* Tracks */}
-              {group.tracks.map((track, tIdx) => {
-                const opacity = getTrackOpacity(group.id, tIdx);
-                const trackId = `${group.id}:${tIdx}`;
-                return (
-                  <div
-                    key={tIdx}
-                    style={{
-                      ...s.trackRow,
-                      opacity,
-                      transition: 'opacity 0.25s ease',
-                      cursor: 'pointer',
-                    }}
-                    onClick={() => toggleTrack(trackId)}
-                  >
-                    <div style={{ ...s.rowLabel, borderLeft: `4px solid ${group.color}` }}>
-                      <span style={s.trackName}>{track.name}</span>
-                    </div>
-                    {STAGES.map(stage => {
-                      const cell = track.cells[stage.key];
-                      if (!cell) {
-                        return (
-                          <div key={stage.key} style={s.cell}>
-                            <span style={s.dash}>-</span>
-                          </div>
-                        );
-                      }
-                      return (
-                        <div
-                          key={stage.key}
-                          style={{
-                            ...s.cell,
-                            borderTop: `3px solid ${group.color}`,
-                          }}
-                        >
-                          <div style={s.cellTitle}>{cell.title}</div>
-                          <div style={s.cellSkills}>{cell.skills}</div>
-                          {cell.certs && (
-                            <div style={s.cellCerts}>{cell.certs}</div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }
 
 // ── Styles ──
-const COL_WIDTH = 210;
-const LABEL_WIDTH = 140;
-
-const s: Record<string, CSSProperties> = {
+const styles: Record<string, CSSProperties> = {
   page: {
-    maxWidth: 1400,
+    maxWidth: 1100,
     margin: '0 auto',
-    padding: '24px 16px 64px',
+    padding: '24px 16px 120px',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    position: 'relative',
   },
   titleBar: {
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: 800,
     color: DEEP_BLUE,
     margin: 0,
+    letterSpacing: -0.5,
   },
   subtitle: {
     fontSize: 14,
@@ -380,165 +631,261 @@ const s: Record<string, CSSProperties> = {
     marginTop: 4,
   },
 
-  // Selector
-  selectorBar: {
+  // Filter bar
+  filterBar: {
     display: 'flex',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
-    marginBottom: 20,
+    marginBottom: 28,
     padding: '12px 16px',
     background: '#f8fafc',
-    borderRadius: 10,
+    borderRadius: 12,
     border: '1px solid #e2e8f0',
-    flexWrap: 'wrap',
+    flexWrap: 'wrap' as const,
   },
-  selectorLabel: {
+  filterLabel: {
     fontSize: 13,
     fontWeight: 700,
     color: DEEP_BLUE,
-    whiteSpace: 'nowrap',
-    lineHeight: '30px',
+    whiteSpace: 'nowrap' as const,
   },
-  chips: {
+  filterChips: {
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: 6,
+    flexWrap: 'wrap' as const,
+    gap: 8,
+    alignItems: 'center',
   },
-  chip: {
-    fontSize: 12,
-    fontWeight: 600,
-    padding: '4px 12px',
-    borderRadius: 16,
-    border: '1px solid',
+  filterChip: {
+    fontSize: 13,
+    padding: '6px 14px',
+    borderRadius: 20,
+    border: '1.5px solid',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
+    display: 'flex',
+    alignItems: 'center',
     lineHeight: '20px',
+    background: 'none',
   },
   clearBtn: {
     fontSize: 12,
     fontWeight: 600,
-    padding: '4px 12px',
-    borderRadius: 16,
-    border: '1px solid #ef4444',
+    padding: '6px 14px',
+    borderRadius: 20,
+    border: '1.5px solid #ef4444',
     background: '#fff',
     color: '#ef4444',
     cursor: 'pointer',
     lineHeight: '20px',
   },
 
-  // Grid
-  scrollContainer: {
-    overflowX: 'auto',
-    WebkitOverflowScrolling: 'touch',
-    paddingBottom: 8,
-  },
-  grid: {
-    minWidth: LABEL_WIDTH + COL_WIDTH * 5 + 40,
-  },
-
-  // Header row
-  headerRow: {
-    display: 'flex',
-    gap: 2,
-    marginBottom: 8,
-  },
-  stageHeaderCell: {
-    width: COL_WIDTH,
-    minWidth: COL_WIDTH,
-    textAlign: 'center',
-  },
-  arrow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 40,
-    color: '#fff',
-    fontWeight: 800,
-    fontSize: 13,
-    letterSpacing: 1,
-  },
-  arrowLabel: {
-    position: 'relative',
-    zIndex: 1,
-  },
-  period: {
-    display: 'block',
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-
-  // Group
-  groupBlock: {
-    marginBottom: 16,
-  },
-  groupBanner: {
-    color: '#fff',
-    fontWeight: 800,
-    fontSize: 14,
-    padding: '6px 16px',
-    borderRadius: '8px 8px 0 0',
-    letterSpacing: 0.5,
-  },
-
-  // Track row
-  trackRow: {
-    display: 'flex',
-    gap: 2,
-    borderBottom: '1px solid #e2e8f0',
-    background: '#fff',
-  },
-  rowLabel: {
-    width: LABEL_WIDTH,
-    minWidth: LABEL_WIDTH,
-    padding: '8px 10px',
-    display: 'flex',
-    alignItems: 'center',
-    background: '#f8fafc',
-  },
-  trackName: {
-    fontSize: 12,
-    fontWeight: 700,
-    color: DEEP_BLUE,
-    lineHeight: 1.3,
-  },
-
-  // Cell
-  cell: {
-    width: COL_WIDTH,
-    minWidth: COL_WIDTH,
-    padding: '8px 10px',
+  // Roadmap
+  roadmap: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 3,
-    background: '#fff',
   },
-  dash: {
-    color: '#cbd5e1',
-    fontSize: 18,
-    textAlign: 'center',
-    width: '100%',
-    display: 'block',
-    lineHeight: '60px',
+
+  // Stage section
+  stageSection: {
+    marginBottom: 0,
   },
-  cellTitle: {
+  stageHeader: {
+    padding: '16px 24px',
+    borderRadius: 14,
+    color: '#fff',
+    marginBottom: 16,
+  },
+  stageHeaderTop: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 6,
+    flexWrap: 'wrap' as const,
+  },
+  stageName: {
+    fontSize: 22,
+    fontWeight: 800,
+    letterSpacing: 1,
+  },
+  stageBadge: {
+    fontSize: 12,
+    fontWeight: 600,
+    background: 'rgba(255,255,255,0.2)',
+    padding: '3px 10px',
+    borderRadius: 12,
+  },
+  stageDesc: {
     fontSize: 13,
+    margin: 0,
+    opacity: 0.9,
+    lineHeight: 1.5,
+  },
+
+  // Cards grid
+  cardsGrid: {
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    gap: 12,
+    padding: '0 8px',
+    justifyContent: 'center',
+  },
+
+  // ACADEMIA special layout
+  academiaCardWrap: {
+    display: 'flex',
+    justifyContent: 'center',
+    padding: '0 8px',
+  },
+
+  academiaCard: {
+    background: '#fff',
+    borderRadius: 12,
+    padding: '20px 28px',
+    cursor: 'pointer',
+    maxWidth: 600,
+    width: '100%',
+    textAlign: 'center' as const,
+  },
+
+  // Track card
+  trackCard: {
+    background: '#fff',
+    borderRadius: 12,
+    padding: '14px 16px',
+    cursor: 'pointer',
+    width: 180,
+    minWidth: 160,
+    flexShrink: 0,
+  },
+
+  cardTitle: {
+    fontSize: 15,
     fontWeight: 700,
     color: DEEP_BLUE,
+    marginBottom: 2,
   },
-  cellSkills: {
+  cardGroup: {
     fontSize: 11,
-    color: '#475569',
-    lineHeight: 1.4,
+    fontWeight: 600,
+    marginBottom: 6,
   },
-  cellCerts: {
+  cardSkills: {
+    fontSize: 11,
+    color: '#64748b',
+    lineHeight: 1.4,
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical' as const,
+    overflow: 'hidden',
+  },
+  cardCerts: {
     fontSize: 10,
     color: '#fff',
     background: '#64748b',
-    padding: '2px 6px',
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginTop: 2,
-    lineHeight: 1.3,
+    padding: '2px 8px',
+    borderRadius: 6,
+    display: 'inline-block',
+    marginTop: 6,
+    lineHeight: 1.4,
+  },
+
+  // Connectors
+  connectorSection: {
+    display: 'flex',
+    justifyContent: 'center',
+    padding: '4px 0',
+  },
+  connectorRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative' as const,
+  },
+  arrowDown: {
+    position: 'absolute' as const,
+    bottom: -6,
+    left: '50%',
+    transform: 'translateX(-50%)',
+  },
+
+  // Summary panel
+  summaryPanel: {
+    position: 'fixed' as const,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    background: '#fff',
+    borderTop: `3px solid ${CYAN}`,
+    boxShadow: '0 -4px 24px rgba(0,0,0,0.12)',
+    padding: '14px 24px',
+    zIndex: 1000,
+  },
+  summaryHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  summaryTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+  },
+  summaryClear: {
+    fontSize: 12,
+    fontWeight: 600,
+    padding: '4px 12px',
+    borderRadius: 12,
+    border: '1px solid #ef4444',
+    background: '#fff',
+    color: '#ef4444',
+    cursor: 'pointer',
+  },
+  summaryCards: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    overflowX: 'auto' as const,
+    paddingBottom: 4,
+  },
+  summaryItem: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 0,
+  },
+  summaryDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    flexShrink: 0,
+  },
+  summaryInfo: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 1,
+  },
+  summaryStage: {
+    fontSize: 9,
+    fontWeight: 700,
+    color: '#94a3b8',
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  summaryRole: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    whiteSpace: 'nowrap' as const,
+  },
+  summaryTrack: {
+    fontSize: 10,
+    fontWeight: 600,
+  },
+  summaryArrow: {
+    fontSize: 16,
+    color: '#94a3b8',
+    margin: '0 4px',
+    flexShrink: 0,
   },
 };
