@@ -29,6 +29,7 @@ export default function Header() {
   const navItems = (
     <>
       <Link to="/" style={styles.navLink}>コース一覧</Link>
+      <Link to="/certifications" style={styles.navLink}>資格表</Link>
       {(user.role === 'leader' || user.role === 'board') && (
         <Link to="/team" style={styles.navLink}>チーム</Link>
       )}
