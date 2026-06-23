@@ -79,14 +79,18 @@ export default function CertificationPage() {
     await loadData();
   };
 
-  // Group certs by level
-  const levelNames = [...new Set(certs.map(c => c.level))];
-  const levelGroups = levelNames.map(level => ({
-    level,
-    color: levelColors[level] ?? '#666',
-    reward: certs.find(c => c.level === level)?.reward ?? '',
-    certs: certs.filter(c => c.level === level),
-  }));
+  // Group certs by level in fixed order
+  const levelOrder = ['academia', 'entry', 'associate', 'professional', 'expert'];
+  const levelLabelMap: Record<string, string> = { academia: 'Academia', entry: 'エントリー', associate: 'アソシエイト', professional: 'プロフェッショナル', expert: 'エキスパート' };
+  const levelGroups = levelOrder
+    .map(level => ({
+      level: levelLabelMap[level] ?? level,
+      levelKey: level,
+      color: levelColors[levelLabelMap[level] ?? level] ?? '#666',
+      reward: certs.find(c => c.level === level)?.reward ?? '',
+      certs: certs.filter(c => c.level === level),
+    }))
+    .filter(g => g.certs.length > 0);
 
   if (loading) {
     return (

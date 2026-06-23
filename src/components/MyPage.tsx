@@ -117,6 +117,21 @@ export default function MyPage() {
   const interestedCerts = userCerts.filter(uc => uc.status === 'interested');
   const acquiredCerts = userCerts.filter(uc => uc.status === 'acquired');
 
+  // Group user certs by level for display
+  const levelOrder = ['academia', 'entry', 'associate', 'professional', 'expert'];
+  const levelLabelMap: Record<string, string> = { academia: 'Academia', entry: 'エントリー', associate: 'アソシエイト', professional: 'プロフェッショナル', expert: 'エキスパート' };
+
+  function groupByLevel(ucList: UserCertification[]) {
+    return levelOrder
+      .map(lvKey => {
+        const certsInLevel = ucList
+          .map(uc => getCertById(uc.certification_id))
+          .filter((c): c is CertificationRecord => !!c && c.level === lvKey);
+        return { levelKey: lvKey, label: levelLabelMap[lvKey] ?? lvKey, color: levelColors[levelLabelMap[lvKey] ?? ''] ?? '#666', certs: certsInLevel };
+      })
+      .filter(g => g.certs.length > 0);
+  }
+
   const handleStatusChange = async (certId: number, newStatus: string) => {
     if (!user) return;
     await upsertUserCertification(user.id, certId, newStatus);
@@ -223,25 +238,22 @@ export default function MyPage() {
         {studyingCerts.length === 0 ? (
           <p style={{ fontSize: 13, color: '#999' }}>まだ習得を目指している資格はありません</p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {studyingCerts.map(uc => {
-              const cert = getCertById(uc.certification_id);
-              if (!cert) return null;
-              return (
-                <button
-                  key={uc.certification_id}
-                  onClick={() => openModal(cert, 'studying')}
-                  style={{
+          groupByLevel(studyingCerts).map(g => (
+            <div key={g.levelKey} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: g.color, marginBottom: 6 }}>{g.label}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 8 }}>
+                {g.certs.map(cert => (
+                  <button key={cert.id} onClick={() => openModal(cert, 'studying')} style={{
                     padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
                     background: '#eff6ff', border: `1px solid ${CYAN}40`,
                     color: DEEP_BLUE, fontSize: 13, fontWeight: 600,
-                  }}
-                >
-                  {cert.name}
-                </button>
-              );
-            })}
-          </div>
+                  }}>
+                    {cert.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </section>
 
@@ -251,25 +263,22 @@ export default function MyPage() {
         {interestedCerts.length === 0 ? (
           <p style={{ fontSize: 13, color: '#999' }}>気になる資格はありません。資格表から追加してください</p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {interestedCerts.map(uc => {
-              const cert = getCertById(uc.certification_id);
-              if (!cert) return null;
-              return (
-                <button
-                  key={uc.certification_id}
-                  onClick={() => openModal(cert, 'interested')}
-                  style={{
+          groupByLevel(interestedCerts).map(g => (
+            <div key={g.levelKey} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: g.color, marginBottom: 6 }}>{g.label}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 8 }}>
+                {g.certs.map(cert => (
+                  <button key={cert.id} onClick={() => openModal(cert, 'interested')} style={{
                     padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
                     background: '#fdf2f8', border: `1px solid ${MAGENTA}40`,
                     color: DEEP_BLUE, fontSize: 13, fontWeight: 600,
-                  }}
-                >
-                  {cert.name}
-                </button>
-              );
-            })}
-          </div>
+                  }}>
+                    {cert.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </section>
 
@@ -279,32 +288,22 @@ export default function MyPage() {
         {acquiredCerts.length === 0 ? (
           <p style={{ fontSize: 13, color: '#999' }}>まだ取得した資格はありません</p>
         ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {acquiredCerts.map(uc => {
-              const cert = getCertById(uc.certification_id);
-              if (!cert) return null;
-              return (
-                <div
-                  key={uc.certification_id}
-                  style={{
+          groupByLevel(acquiredCerts).map(g => (
+            <div key={g.levelKey} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: g.color, marginBottom: 6 }}>{g.label}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 8 }}>
+                {g.certs.map(cert => (
+                  <div key={cert.id} style={{
                     padding: '8px 14px', borderRadius: 10,
                     background: '#ecfdf5', border: `1px solid ${SEA_GREEN}40`,
                     color: DEEP_BLUE, fontSize: 13, fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                  }}
-                >
-                  {cert.name}
-                  <span style={{
-                    fontSize: 10, fontWeight: 700, color: '#fff',
-                    background: levelColors[cert.level] ?? '#666',
-                    padding: '1px 6px', borderRadius: 999,
                   }}>
-                    {cert.level}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                    {cert.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
         )}
       </section>
 
