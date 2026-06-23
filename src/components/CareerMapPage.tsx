@@ -425,10 +425,6 @@ const ENTRY_LEVEL_LIST: UndecidedEntry[] = [
   { groupId: 'qa', trackIdx: 1, groupName: 'QAエンジニア', trackName: 'テスト自動化', role: '実行者', description: 'テスト仕様書に基づき、バグを確実に発見・報告' },
   { groupId: 'app', trackIdx: 0, groupName: 'アプリケーションエンジニア', trackName: 'ソフトウェアエンジニア', role: 'プログラマー', description: 'プログラミング基礎・バージョン管理' },
   { groupId: 'infra', trackIdx: 0, groupName: 'クラウドインフラエンジニア', trackName: 'クラウドインフラ', role: 'インフラオペレーター', description: 'サーバ基本設定・運用' },
-  { groupId: 'biz', trackIdx: 0, groupName: 'ビジネス', trackName: 'バックオフィス', role: 'IT管理担当', description: 'IT機器キッティング・管理、アカウント管理' },
-  { groupId: 'biz', trackIdx: 1, groupName: 'ビジネス', trackName: 'CS', role: 'CS担当者', description: '問い合わせ対応、一次切り分け、FAQ整備' },
-  { groupId: 'biz', trackIdx: 2, groupName: 'ビジネス', trackName: 'データ', role: 'データオペレーター', description: 'SQL・BIツール基礎、データ抽出・集計' },
-  { groupId: 'biz', trackIdx: 3, groupName: 'ビジネス', trackName: 'マーケ', role: 'コンテンツ担当', description: 'コンテンツ制作、SEO基礎、Web・SNS運用' },
 ];
 
 const ASSOCIATE_LEVEL_LIST: UndecidedEntry[] = [
@@ -444,8 +440,6 @@ const ASSOCIATE_LEVEL_LIST: UndecidedEntry[] = [
   }),
   { groupId: 'qa', trackIdx: 2, groupName: 'QAエンジニア', trackName: 'セキュリティ', role: '侵害分析', description: '代表的な脆弱性を理解し、脆弱性の再現確認やリスク説明ができる' },
   { groupId: 'pm', trackIdx: 0, groupName: 'PM', trackName: 'PM', role: 'PMO', description: '進捗・課題管理、ドキュメント整備、会議運営の補佐' },
-  { groupId: 'app', trackIdx: 1, groupName: 'アプリケーションエンジニア', trackName: 'アーキテクチャ', role: 'テックリード', description: 'アーキテクチャ設計・技術選定・チームの技術指導' },
-  { groupId: 'infra', trackIdx: 1, groupName: 'クラウドインフラエンジニア', trackName: 'セキュリティ', role: 'セキュリティエンジニア', description: '防御設計・アクセス制御・インシデント対応' },
 ];
 
 // ── Helpers ──
