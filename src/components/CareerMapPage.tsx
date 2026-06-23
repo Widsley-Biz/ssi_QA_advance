@@ -38,7 +38,7 @@ const STAGES: StageInfo[] = [
     label: 'ACADEMIA',
     sublabel: 'IT未経験者',
     period: '0〜半年',
-    description: 'アカデミア生として教育カリキュラムスコープ内',
+    description: 'ITキャリアスタート。研修でQAエンジニアの基礎を学び、案件を通してIT知識と経験を増やす。',
     gradient: 'linear-gradient(135deg, #1e293b 0%, #334155 100%)',
   },
   {
@@ -46,7 +46,7 @@ const STAGES: StageInfo[] = [
     label: 'ENTRY',
     sublabel: 'IT初心者',
     period: '半年〜1年',
-    description: '進みたい方向性を決めていない状態。どの分野でも役立つ学習/経験',
+    description: '案件と並行してプログラミングやインフラに関しても基本を押さえていく。',
     gradient: `linear-gradient(135deg, ${CYAN} 0%, #2196F3 100%)`,
   },
   {
@@ -54,7 +54,7 @@ const STAGES: StageInfo[] = [
     label: 'ASSOCIATE',
     sublabel: 'IT中級者',
     period: '1〜3年',
-    description: '専門性高めれる学習をするか、共通スキルの習得に努める',
+    description: '専門領域へのステップアップ。一人称作業が最低限、自分に合った職種を見極める。',
     gradient: `linear-gradient(135deg, ${SEA_GREEN} 0%, #26a69a 100%)`,
   },
   {
@@ -62,7 +62,7 @@ const STAGES: StageInfo[] = [
     label: 'PROFESSIONAL',
     sublabel: 'IT上級者',
     period: '3〜5年',
-    description: '専門性を決めて、その領域の特化スキルを習熟',
+    description: '各領域の専門家として、PJやチームを先導し部下の育成も行う。',
     gradient: `linear-gradient(135deg, ${MAGENTA} 0%, #c2185b 100%)`,
   },
   {
@@ -70,7 +70,7 @@ const STAGES: StageInfo[] = [
     label: 'EXPERT',
     sublabel: 'ITエキスパート',
     period: '5年〜',
-    description: '「この人に任せれば問題ない」の領域',
+    description: '業務知識の蓄積と大規模PJ経験を経て、代わりの利かないスペシャルな存在に。',
     gradient: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
   },
 ];
@@ -95,28 +95,28 @@ const TRACK_GROUPS: TrackGroupDef[] = [
       {
         name: 'QAエンジニア',
         cells: {
-          ACADEMIA: { title: 'QA基礎', skills: '社会人基礎力／QA基礎知識／テスト技法理解', certs: 'JSTQB FL' },
-          ENTRY: { title: '実行者', skills: 'テスト技法の基礎／Jira等バグ管理ツール／不具合起票', certs: 'IVEC アシスタント' },
-          ASSOCIATE: { title: '設計者', skills: '高度なテスト設計技法／基本的な自動化ツール運用', certs: 'JSTQB TA / JCSQE初級' },
-          PROFESSIONAL: { title: '推進者', skills: 'テスト戦略の策定／自動化フレームワーク構築', certs: 'JSTQB TM / JCSQE中級' },
-          EXPERT: { title: 'マネージャー', skills: 'QAチームの採用・育成／予算管理／品質指標の定義化', certs: 'JCSQE上級' },
+          ACADEMIA: { title: 'QA基礎', skills: '社会人基礎力／QA基礎知識／テスト技法理解／テスト実施（指導下）', certs: 'JSTQB FL' },
+          ENTRY: { title: '実行者', skills: 'テスト技法の基礎／Jira等バグ管理ツール／不具合起票／AIによるテストケース案の生成・確認補助', certs: 'IVEC アシスタントクラス' },
+          ASSOCIATE: { title: '設計者', skills: '高度なテスト設計技法／基本的な自動化ツール運用／開発者との円滑なコミュニケーション／AIによる不具合分析・起票補助', certs: 'JSTQB TA／JCSQE初級／IVEC テスタークラス' },
+          PROFESSIONAL: { title: '推進者', skills: 'テスト戦略の策定／自動化フレームワーク構築／不具合分析によるプロセス改善提案／AI（Claude Code等）でのテストコード生成・自動化／AIを使ったリグレッション分析', certs: 'JSTQB TM／JCSQE中級／IVEC デザイナークラス' },
+          EXPERT: { title: 'マネージャー', skills: 'QAチームの採用・育成／予算管理／組織全体の品質指標の定義化／CoQ最適化／LLMのテスト手法（プロンプト品質・出力評価）／AI品質評価戦略の設計', certs: 'JCSQE上級／IVEC アーキテクトクラス／認定スクラムマスター' },
         },
       },
       {
         name: '自動化系',
         cells: {
-          ENTRY: { title: '実行者', skills: 'テスト技法の基礎／不具合起票', certs: 'ITパスポート' },
-          ASSOCIATE: { title: '自動化ユーザー', skills: 'ノーコード/録画でテスト作成／HTML理解', certs: 'Python3基礎 / Java Silver' },
-          PROFESSIONAL: { title: '自動化エンジニア', skills: 'コードでテスト自動化／API・CI/CD', certs: 'JSTQB TAE / AWS CLF' },
-          EXPERT: { title: 'QAアーキテクト', skills: '組織の自動化戦略立案／ROI管理', certs: 'AWS SAA / SAP' },
+          ENTRY: { title: '実行者', skills: 'テスト技法の基礎／Jira等バグ管理ツール／不具合起票', certs: 'ITパスポート／IVEC アシスタントクラス' },
+          ASSOCIATE: { title: '自動化ユーザー', skills: 'ノーコード/録画でテスト作成／HTML構造理解と要素特定／Autify・mabl・Selenium IDE／SQL基礎', certs: 'Python3基礎／Java Silver' },
+          PROFESSIONAL: { title: '自動化エンジニア', skills: 'コードでテスト自動化／API・CI/CD組み込み／Python・Playwright・GitHub・Postman', certs: 'JSTQB TAE／AWS CLF／GitHub Foundations' },
+          EXPERT: { title: 'QAアーキテクト', skills: '組織の自動化戦略立案／保守性の高いFW設計／ROI管理／Docker・負荷テスト・チームマネジメント', certs: 'AWS SAA/SAP／JSTQB AL-TM／ISACA CISA' },
         },
       },
       {
         name: 'セキュリティ系',
         cells: {
-          ASSOCIATE: { title: '侵害分析', skills: 'OWASP基礎／認証・認可の基本', certs: 'ISC2 CC' },
-          PROFESSIONAL: { title: '防御設計', skills: '攻撃シナリオ設計／脆弱性連鎖分析', certs: '徳丸基礎試験' },
-          EXPERT: { title: 'セキュリティレビュー・リード', skills: 'アクセス制御設計／組織改善推進', certs: 'CISSP' },
+          ASSOCIATE: { title: '侵害分析', skills: 'OWASP基礎／認証・認可の基本／情報漏えい対策／パスワード管理／権限設定の基礎／脆弱性再現', certs: 'ISC2 CC／CompTIA Security+' },
+          PROFESSIONAL: { title: '防御設計', skills: '基本対策の説明／攻撃シナリオ設計／脆弱性連鎖分析／認証設計レビュー／被害影響分析／権限設計レビュー／リスク評価／セキュア構成レビュー', certs: '徳丸基礎試験／SecuriST 脆弱性診断士／SSCP／CEH' },
+          EXPERT: { title: 'セキュリティレビュー・リード', skills: 'アクセス制御設計／データ保護設計／セキュリティレビュー／教育設計／組織改善推進', certs: '情報処理安全確保支援士(SC)／CISSP／OSCP' },
         },
       },
     ],
@@ -129,17 +129,17 @@ const TRACK_GROUPS: TrackGroupDef[] = [
       {
         name: 'ソフトウェアエンジニア',
         cells: {
-          ENTRY: { title: 'プログラマー', skills: 'プログラミング基礎／バージョン管理', certs: 'ITパスポート / Java 3級' },
-          ASSOCIATE: { title: 'ジュニアエンジニア', skills: '基本設計／DB設計／API設計', certs: '基本情報 / Java Silver' },
-          PROFESSIONAL: { title: 'シニアエンジニア', skills: '要件定義／顧客折衝', certs: '応用情報 / AWS SAA' },
-          EXPERT: { title: 'システムコンサルタント', skills: 'ドメイン知識深化／業務コンサルティング', certs: 'SA試験' },
+          ENTRY: { title: 'プログラマー', skills: 'プログラミング基礎／詳細設計／バージョン管理／AIツール（Copilot等）によるコード補完・説明補助', certs: 'ITパスポート試験／Java 3級／Oracle Bronze／Pythonエンジニア認定基礎試験／HTML5プロフェッショナル認定 Lv1' },
+          ASSOCIATE: { title: 'ジュニアエンジニア', skills: '基本設計／DB設計／API設計／非機能要件の把握／クラウド基礎／AIペアプログラミング活用・プロンプト設計', certs: '基本情報技術者試験／Java Silver／Oracle Silver／AWS CLF／AWS AIP' },
+          PROFESSIONAL: { title: 'シニアエンジニア', skills: '要件定義／顧客折衝／見積もり／プロジェクト技術リード／パフォーマンス設計・チューニング／AI（Claude Code等）での自律的なコーディング／LLM APIのアプリ組み込み', certs: '応用情報技術者試験／Java Gold／AWS SAA／Oracle Gold／GCP Professional Cloud Developer／G検定' },
+          EXPERT: { title: 'システムコンサルタント', skills: 'ドメイン知識の深化／業務コンサルティング／提案・PoC主導／AI機能のアーキテクチャ設計・RAG/エージェント構築', certs: 'システムアーキテクト試験／ITストラテジスト試験／AWS SAP／AWS MLA' },
         },
       },
       {
         name: 'アーキテクチャ',
         cells: {
-          PROFESSIONAL: { title: 'テックリード', skills: 'アーキテクチャ設計／技術選定', certs: '応用情報 / AWS SAP' },
-          EXPERT: { title: 'チーフアーキテクト', skills: '全社技術戦略', certs: 'SA試験 / CKA' },
+          PROFESSIONAL: { title: 'テックリード', skills: 'アーキテクチャ設計／技術選定／チームの技術指導／パフォーマンス設計・チューニング', certs: '応用情報技術者試験／AWS SAP／Azure Solutions Architect Expert／GCP Professional Cloud Architect' },
+          EXPERT: { title: 'チーフアーキテクト', skills: '全社技術戦略／大規模システム設計／技術組織のリード', certs: 'システムアーキテクト試験／CKA／AWS SAP' },
         },
       },
     ],
@@ -152,17 +152,17 @@ const TRACK_GROUPS: TrackGroupDef[] = [
       {
         name: 'クラウドインフラ',
         cells: {
-          ENTRY: { title: 'インフラオペレーター', skills: 'サーバ基本設定', certs: 'ITパスポート / AWS CLF / LPIC-1' },
-          ASSOCIATE: { title: 'インフラエンジニア', skills: 'サーバ・NW設計', certs: '基本情報 / AWS SAA / CCNA' },
-          PROFESSIONAL: { title: 'シニアインフラエンジニア', skills: '全体統括・管理', certs: '応用情報 / AWS DOP / CCNP' },
-          EXPERT: { title: 'インフラアーキテクト', skills: '大規模設計', certs: 'NWスペシャリスト / AWS SAP / CKA' },
+          ENTRY: { title: 'インフラオペレーター', skills: 'サーバ基本設定・運用／NW基本設定・疎通確認／EC2・VPC基礎／監視ツール運用／AIによるコマンド・設定ファイル生成の補助活用', certs: 'ITパスポート試験／AWS CLF／LPIC-1／LinuC Lv1／Azure Fundamentals' },
+          ASSOCIATE: { title: 'インフラエンジニア', skills: 'サーバ・NW設計書作成／可用性設計／IaC基礎／クラウド構成設計／ネットワーク影響調整／AIによるIaC（Terraform等）生成・レビュー', certs: '基本情報技術者試験／AWS SAA／CCNA／LPIC-2／Azure Administrator Associate／AWS AIP' },
+          PROFESSIONAL: { title: 'シニアインフラエンジニア', skills: '会社全体のサーバ・NW構成統括・設計・管理／インフラ最適化検討／コスト管理／セキュリティ設計／AI（Claude Code等）でのインフラ構築自動化／AIによる障害原因分析', certs: '応用情報技術者試験／AWS DOP／CCNP／LPIC-3／Azure DevOps Engineer Expert' },
+          EXPERT: { title: 'インフラアーキテクト', skills: '大規模・複雑環境の統括・設計（マルチクラウド・グローバル対応等）／インフラ最適化推進／組織・チームリード／AIワークロードのインフラ設計（GPU基盤・MLOps）', certs: 'ITサービスマネージャ試験／ネットワークスペシャリスト試験／AWS SAP／CKA／AWS Advanced Networking Specialty／AWS MLA' },
         },
       },
       {
         name: 'セキュリティ',
         cells: {
-          PROFESSIONAL: { title: 'セキュリティエンジニア', skills: 'セキュリティ設計・運用', certs: '応用情報 / CCSP' },
-          EXPERT: { title: 'セキュリティアーキテクト', skills: '組織セキュリティ戦略', certs: '情報処理安全確保支援士 / CISSP' },
+          PROFESSIONAL: { title: 'セキュリティエンジニア', skills: '防御設計／アクセス制御／インシデント対応／セキュリティポリシー運用', certs: '応用情報技術者試験／情報セキュリティマネジメント試験／AWS SCS／CCSP／CompTIA Security+' },
+          EXPERT: { title: 'セキュリティアーキテクト', skills: 'SOC運用統括／サイバー攻撃対策／セキュリティガバナンス／組織全体のセキュリティ戦略', certs: '情報処理安全確保支援士試験／システム監査技術者試験／CISSP／AWS SCS' },
         },
       },
     ],
@@ -175,9 +175,9 @@ const TRACK_GROUPS: TrackGroupDef[] = [
       {
         name: 'PM',
         cells: {
-          ASSOCIATE: { title: 'PMO', skills: 'プロジェクト管理補佐' },
-          PROFESSIONAL: { title: 'PL', skills: '各領域リーダー' },
-          EXPERT: { title: 'PM', skills: 'プロジェクト統括', certs: 'PMP / ITサービスマネージャ' },
+          ASSOCIATE: { title: 'PMO', skills: '進捗・課題管理／ドキュメント整備／会議運営の補佐', certs: 'ITパスポート試験／基本情報技術者試験／認定スクラムマスター（CSM）' },
+          PROFESSIONAL: { title: 'PL', skills: '※QA・ソフトウェア・インフラなど領域ごとのリーダーが該当' },
+          EXPERT: { title: 'PM', skills: 'プロジェクト全体責任／予算・リスク管理／ステークホルダー調整', certs: 'プロジェクトマネージャ試験／PMP®／ITサービスマネージャ試験' },
         },
       },
     ],
@@ -190,37 +190,37 @@ const TRACK_GROUPS: TrackGroupDef[] = [
       {
         name: 'バックオフィス・DX推進',
         cells: {
-          ENTRY: { title: 'IT管理担当', skills: 'IT資産管理／ヘルプデスク' },
-          ASSOCIATE: { title: 'IT運用・改善担当', skills: '業務プロセス改善' },
-          PROFESSIONAL: { title: 'ITアドミン・DX推進', skills: 'DXプロジェクト推進' },
-          EXPERT: { title: 'IT戦略・DX企画', skills: '全社IT戦略立案' },
+          ENTRY: { title: 'IT管理担当', skills: 'IT機器キッティング・管理／アカウント管理／担当業務理解', certs: 'ITパスポート試験／生成AIプラクティショナー（社内認定）' },
+          ASSOCIATE: { title: 'IT運用・改善担当', skills: 'ヘルプデスク対応／社内システム運用／ベンダー管理／RPA構築', certs: '情報セキュリティマネジメント試験／RPA技術者検定／AWS AIP' },
+          PROFESSIONAL: { title: 'ITアドミン・DX推進', skills: '社内IT環境の設計・改善／セキュリティポリシー運用／RPA・自動化による業務効率化推進', certs: '基本情報技術者試験／AWS CLF／ITコーディネータ試験' },
+          EXPERT: { title: 'IT戦略・DX企画', skills: 'IT投資計画／全社DX推進・システム刷新／情報セキュリティ戦略', certs: '応用情報技術者試験／ITストラテジスト試験／PMP®' },
         },
       },
       {
         name: 'カスタマーサポート',
         cells: {
-          ENTRY: { title: 'CS担当者', skills: '問合せ対応' },
-          ASSOCIATE: { title: 'CSアナリスト', skills: 'エスカレーション対応' },
-          PROFESSIONAL: { title: 'CSスペシャリスト', skills: 'チーム管理・改善' },
-          EXPERT: { title: 'CS企画・推進', skills: '顧客体験戦略' },
+          ENTRY: { title: 'CS担当者', skills: '問い合わせ対応／一次切り分け／FAQ整備', certs: 'ITパスポート試験' },
+          ASSOCIATE: { title: 'CSアナリスト', skills: '問い合わせ傾向の分析／FAQ高度化／対応品質の改善提案', certs: '情報セキュリティマネジメント試験／HDI-CSCA' },
+          PROFESSIONAL: { title: 'CSスペシャリスト', skills: '開発・QA・営業など関係部門との連携／不具合エスカレーション／技術的な問題解決', certs: '基本情報技術者試験／HDI-CSCTL' },
+          EXPERT: { title: 'CS企画・推進', skills: 'CS組織の設計／KPI策定／プロダクト改善への提言', certs: '応用情報技術者試験／ITサービスマネージャ試験' },
         },
       },
       {
         name: 'データアナリスト',
         cells: {
-          ENTRY: { title: 'データオペレーター', skills: 'データ抽出・集計' },
-          ASSOCIATE: { title: 'データアナリスト', skills: '分析・可視化' },
-          PROFESSIONAL: { title: 'データコンサルタント', skills: '高度分析・提言' },
-          EXPERT: { title: 'データストラテジスト', skills: 'データ戦略立案' },
+          ENTRY: { title: 'データオペレーター', skills: 'SQL・BIツール基礎／データ抽出・集計／レポート作成', certs: 'ITパスポート試験／Pythonエンジニア認定基礎試験／AWS AIP' },
+          ASSOCIATE: { title: 'データアナリスト', skills: '分析手法・統計学／DWH理解／仮説立案・可視化／課題発見', certs: '基本情報技術者試験／AWS DEA／Pythonデータ分析試験／統計検定2級' },
+          PROFESSIONAL: { title: 'データコンサルタント', skills: '改善提案・施策立案／クライアントへのプレゼン／Python・機械学習基礎', certs: '応用情報技術者試験／AWS MLA／Azure Data Scientist Associate／統計検定1級' },
+          EXPERT: { title: 'データストラテジスト', skills: 'クライアントのデータ戦略立案／データ基盤設計／組織へのデータ活用推進', certs: 'データベーススペシャリスト試験／AWS MLS／TensorFlow Developer／G検定・E資格' },
         },
       },
       {
         name: 'マーケティング',
         cells: {
-          ENTRY: { title: 'コンテンツ担当', skills: '施策実行補助' },
-          ASSOCIATE: { title: 'マーケター', skills: '施策企画・実行' },
-          PROFESSIONAL: { title: 'マーケティングプランナー', skills: '戦略立案' },
-          EXPERT: { title: 'マーケティングストラテジスト', skills: '全社マーケ統括' },
+          ENTRY: { title: 'コンテンツ担当', skills: 'コンテンツ制作／SEO基礎／Web・SNS運用', certs: 'ITパスポート試験／ウェブ解析士' },
+          ASSOCIATE: { title: 'マーケター', skills: 'Web・SNS広告運用／効果測定・分析／PDCAサイクル', certs: 'ウェブ解析士マスター／GAIQ／Google 広告認定資格' },
+          PROFESSIONAL: { title: 'マーケティングプランナー', skills: '施策企画・立案／マルチチャネル戦略／データに基づく改善提案', certs: 'GAIQ／HubSpot Marketing Hub 認定資格／Pythonエンジニア認定基礎試験' },
+          EXPERT: { title: 'マーケティングストラテジスト', skills: 'マーケ戦略立案／ブランディング／クライアントの市場戦略推進', certs: '応用情報技術者試験／ITストラテジスト試験' },
         },
       },
     ],
@@ -264,15 +264,6 @@ function buildStageCards(): Record<StageKey, TrackCard[]> {
 const STAGE_CARDS = buildStageCards();
 
 
-
-// ── Helper: get connecting stages for a cardId ──
-function getCardStages(cardId: string): StageKey[] {
-  const [groupId, trackIdxStr] = cardId.split(':');
-  const trackIdx = parseInt(trackIdxStr, 10);
-  const group = TRACK_GROUPS.find(g => g.id === groupId);
-  if (!group || !group.tracks[trackIdx]) return [];
-  return Object.keys(group.tracks[trackIdx].cells) as StageKey[];
-}
 
 // ── Component ──
 export default function CareerMapPage() {
@@ -326,47 +317,6 @@ export default function CareerMapPage() {
       }
     }
   }
-
-  // Check if a connector between two stages should be highlighted for a given cardId
-  const isConnectorHighlighted = (cardId: string, fromStage: StageKey, toStage: StageKey): boolean => {
-    const stages = getCardStages(cardId);
-    const stageOrder: StageKey[] = ['ACADEMIA', 'ENTRY', 'ASSOCIATE', 'PROFESSIONAL', 'EXPERT'];
-    const fromIdx = stageOrder.indexOf(fromStage);
-    const toIdx = stageOrder.indexOf(toStage);
-    if (fromIdx === -1 || toIdx === -1) return false;
-    // Check if both stages (or stages between) contain this track
-    const hasFrom = stages.includes(fromStage);
-    const hasTo = stages.includes(toStage);
-    return hasFrom && hasTo;
-  };
-
-  // Get connector color between stages for a given card
-  const getConnectorInfo = (fromStageKey: StageKey, toStageKey: StageKey): { color: string; active: boolean }[] => {
-    const connectors: { color: string; active: boolean }[] = [];
-    const allCardIds = new Set<string>();
-
-    // Collect all unique cardIds that span both stages
-    for (const card of STAGE_CARDS[fromStageKey]) {
-      allCardIds.add(card.cardId);
-    }
-
-    for (const cardId of allCardIds) {
-      if (isConnectorHighlighted(cardId, fromStageKey, toStageKey)) {
-        const [groupId] = cardId.split(':');
-        const group = TRACK_GROUPS.find(g => g.id === groupId);
-        const isActive = activeGroupFilter
-          ? groupId === activeGroupFilter
-          : hasSelection
-            ? selectedCards.has(cardId)
-            : false;
-        if (group) {
-          connectors.push({ color: group.color, active: isActive });
-        }
-      }
-    }
-
-    return connectors;
-  };
 
   return (
     <div style={styles.page}>
@@ -503,59 +453,26 @@ export default function CareerMapPage() {
               )}
             </div>
 
-            {/* Connector lines between stages */}
+            {/* Arrow connector between stages */}
             {stageIdx < STAGES.length - 1 && (
-              <div style={styles.connectorSection}>
-                {(() => {
-                  const nextStage = STAGES[stageIdx + 1];
-                  const connectors = getConnectorInfo(stage.key, nextStage.key);
-                  const hasActiveConnector = connectors.some(c => c.active);
-                  return (
-                    <div style={styles.connectorRow}>
-                      {connectors.length > 0 ? (
-                        connectors.map((conn, ci) => (
-                          <div
-                            key={ci}
-                            style={{
-                              width: 3,
-                              height: 40,
-                              borderRadius: 2,
-                              background: conn.active ? conn.color : hasActiveConnector ? '#e2e8f055' : '#cbd5e1',
-                              margin: '0 4px',
-                              transition: 'all 0.25s ease',
-                              opacity: conn.active ? 1 : hasActiveConnector ? 0.3 : 0.5,
-                            }}
-                          />
-                        ))
-                      ) : (
-                        <div
-                          style={{
-                            width: 3,
-                            height: 40,
-                            borderRadius: 2,
-                            background: '#cbd5e1',
-                            opacity: 0.5,
-                          }}
-                        />
-                      )}
-                      {/* Arrow indicator */}
-                      <div style={styles.arrowDown}>
-                        <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                          <path
-                            d="M7 10L0.5 0H13.5L7 10Z"
-                            fill={
-                              hasActiveConnector
-                                ? connectors.find(c => c.active)?.color ?? '#cbd5e1'
-                                : '#cbd5e1'
-                            }
-                            opacity={hasActiveConnector ? 1 : 0.5}
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
+              <>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                  <div style={{ width: 3, height: 24, background: '#ddd', borderRadius: 2 }} />
+                </div>
+                <div style={{
+                  display: 'flex',
+                  justifyContent: 'center',
+                  padding: '0 0 8px',
+                }}>
+                  <div style={{
+                    width: 0,
+                    height: 0,
+                    borderLeft: '16px solid transparent',
+                    borderRight: '16px solid transparent',
+                    borderTop: '16px solid #ddd',
+                  }} />
+                </div>
+              </>
             )}
           </div>
         ))}
@@ -764,10 +681,6 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
     color: '#64748b',
     lineHeight: 1.4,
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical' as const,
-    overflow: 'hidden',
   },
   cardCerts: {
     fontSize: 10,
@@ -778,25 +691,6 @@ const styles: Record<string, CSSProperties> = {
     display: 'inline-block',
     marginTop: 6,
     lineHeight: 1.4,
-  },
-
-  // Connectors
-  connectorSection: {
-    display: 'flex',
-    justifyContent: 'center',
-    padding: '4px 0',
-  },
-  connectorRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative' as const,
-  },
-  arrowDown: {
-    position: 'absolute' as const,
-    bottom: -6,
-    left: '50%',
-    transform: 'translateX(-50%)',
   },
 
   // Summary panel
