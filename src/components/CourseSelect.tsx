@@ -89,7 +89,7 @@ export default function CourseSelect() {
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <h1 style={{ fontSize: 24, fontWeight: 800, color: DEEP_BLUE, margin: '0 0 8px' }}>
-          コース選択
+          スキルマップ選択
         </h1>
         <p style={{ fontSize: 14, color: '#888', margin: 0, lineHeight: 1.6 }}>
           目指したいキャリアに合わせてコースを選択してください。<br />
