@@ -411,6 +411,15 @@ const TRACK_GROUPS: TrackGroupDef[] = [
   },
 ];
 
+// ── Track group goals ──
+const TRACK_GROUP_GOALS: Record<string, string> = {
+  qa: '品質を軸に、テスト実行者からQAマネージャーへのキャリアアップ、またはテスト自動化・セキュリティの専門性を高める',
+  app: 'プログラマーからシニアエンジニア、アーキテクト、コンサルタントへのキャリアアップを目指す',
+  infra: 'インフラの構築・運用からアーキテクト、セキュリティ専門家へのキャリアアップを目指す',
+  pm: 'PMOからPL、PMへとプロジェクト管理の専門性を高める',
+  biz: 'IT基盤を活かしたバックオフィスDX、CS、データ分析、マーケティングの専門家を目指す',
+};
+
 // ── "まだ決まっていない方" data ──
 interface UndecidedEntry {
   groupId: string;
@@ -826,6 +835,11 @@ export default function CareerMapPage() {
           <h2 style={s.routeTitle}>
             {selectedGroup.name} / {selectedTrack.name} のキャリアルート
           </h2>
+          {TRACK_GROUP_GOALS[selectedGroup.id] && (
+            <p style={{ fontSize: 14, color: SEA_GREEN, fontWeight: 600, marginBottom: 16 }}>
+              ゴール: {TRACK_GROUP_GOALS[selectedGroup.id]}
+            </p>
+          )}
 
           <div style={{
             ...s.routeRow,

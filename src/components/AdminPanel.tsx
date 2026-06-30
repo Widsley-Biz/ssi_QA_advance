@@ -1006,6 +1006,7 @@ function CertificationManagement() {
   const [formLevel, setFormLevel] = useState('entry');
   const [formCategory, setFormCategory] = useState('国家資格');
   const [formReward, setFormReward] = useState('');
+  const [formNoReward, setFormNoReward] = useState(true);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState('');
 
@@ -1031,6 +1032,7 @@ function CertificationManagement() {
     setFormLevel('entry');
     setFormCategory('国家資格');
     setFormReward('');
+    setFormNoReward(true);
     setFeedback('');
   };
 
@@ -1042,6 +1044,7 @@ function CertificationManagement() {
     setFormLevel(cert.level);
     setFormCategory(cert.category);
     setFormReward(cert.reward ?? '');
+    setFormNoReward(!cert.reward);
     setFeedback('');
   };
 
@@ -1049,13 +1052,14 @@ function CertificationManagement() {
     if (!formName.trim()) { setFeedback('資格名を入力してください'); return; }
     setSaving(true);
     try {
+      const rewardValue = formNoReward ? null : (formReward || null);
       if (isNew) {
         await createCertification({
           name: formName.trim(),
           description: formDesc,
           level: formLevel,
           category: formCategory,
-          reward: formReward || null,
+          reward: rewardValue,
           sort_order: certs.filter(c => c.level === formLevel).length + 1,
         });
         setFeedback('追加しました');
@@ -1065,7 +1069,7 @@ function CertificationManagement() {
           description: formDesc,
           level: formLevel,
           category: formCategory,
-          reward: formReward || null,
+          reward: rewardValue,
         });
         setFeedback('更新しました');
       }
@@ -1150,8 +1154,23 @@ function CertificationManagement() {
                 </select>
               </div>
               <div style={{ flex: '1 1 200px' }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#666' }}>報奨金情報</label>
-                <input value={formReward} onChange={e => setFormReward(e.target.value)} style={inputStyle} placeholder="例: 報奨金10,000円" />
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#666' }}>資格手当</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <label style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={formNoReward}
+                      onChange={e => {
+                        setFormNoReward(e.target.checked);
+                        if (e.target.checked) setFormReward('');
+                      }}
+                    />
+                    対象外
+                  </label>
+                  {!formNoReward && (
+                    <input value={formReward} onChange={e => setFormReward(e.target.value)} style={inputStyle} placeholder="例: 報奨金10,000円" />
+                  )}
+                </div>
               </div>
             </div>
           </div>
