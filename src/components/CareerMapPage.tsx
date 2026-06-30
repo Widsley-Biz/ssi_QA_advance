@@ -948,7 +948,17 @@ export default function CareerMapPage() {
                     }}
                   >
                     <div style={s.certListLeft}>
-                      <span style={s.certName}>{item.certName}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={s.certName}>{item.certName}</span>
+                        {(() => {
+                          const rec = findCertByName(allCerts, item.certName);
+                          return !rec?.reward ? (
+                            <span style={{ fontSize: 9, fontWeight: 700, color: '#9ca3af', background: '#f3f4f6', padding: '1px 6px', borderRadius: 4, border: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>
+                              資格手当対象外
+                            </span>
+                          ) : null;
+                        })()}
+                      </div>
                       <span style={s.certLevel}>{STAGE_LABELS[item.level]}</span>
                     </div>
                     <div style={s.certListRight}>
@@ -996,16 +1006,26 @@ export default function CareerMapPage() {
               <div style={s.modalSection}>
                 <h3 style={s.modalSectionTitle}>推奨資格</h3>
                 <div style={s.modalCertList}>
-                  {modalCell.certs.map((certName, i) => (
-                    <div
-                      key={i}
-                      onClick={() => setCertDetailName(certName)}
-                      style={{ ...s.modalCertRow, cursor: 'pointer' }}
-                    >
-                      <span style={s.modalCertName}>{certName}</span>
-                      {renderCertStatus(certName, true)}
-                    </div>
-                  ))}
+                  {modalCell.certs.map((certName, i) => {
+                    const rec = findCertByName(allCerts, certName);
+                    return (
+                      <div
+                        key={i}
+                        onClick={() => setCertDetailName(certName)}
+                        style={{ ...s.modalCertRow, cursor: 'pointer' }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', flex: 1 }}>
+                          <span style={s.modalCertName}>{certName}</span>
+                          {!rec?.reward && (
+                            <span style={{ fontSize: 8, fontWeight: 700, color: '#9ca3af', background: '#f3f4f6', padding: '1px 5px', borderRadius: 3, border: '1px solid #e5e7eb', whiteSpace: 'nowrap' }}>
+                              手当対象外
+                            </span>
+                          )}
+                        </div>
+                        {renderCertStatus(certName, true)}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
