@@ -51,7 +51,8 @@ export default function CertificationPage() {
         fetchCertifications(),
         user ? fetchUserCertifications(user.id) : Promise.resolve([]),
       ]);
-      setCerts(allCerts);
+      // 資格表には報奨金対象の資格のみ表示（キャリアパス推奨資格は除外）
+      setCerts(allCerts.filter(c => c.reward));
       setUserCerts(uc);
     } catch (e) {
       console.error('Failed to load certifications:', e);
