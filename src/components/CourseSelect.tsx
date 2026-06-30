@@ -189,6 +189,10 @@ export default function CourseSelect() {
               {course.description}
             </p>
 
+            <p style={{ fontSize: 12, color: SEA_GREEN, fontWeight: 600, margin: '0 0 16px', lineHeight: 1.5 }}>
+              {course.goal}
+            </p>
+
             {/* Status */}
             {latestAssessment ? (
               <div style={{
