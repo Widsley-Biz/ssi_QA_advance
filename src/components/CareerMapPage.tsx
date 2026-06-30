@@ -623,7 +623,6 @@ export default function CareerMapPage() {
 
   // Cert detail data
   const certDetailRecord = certDetailName ? findCertByName(allCerts, certDetailName) : undefined;
-  const certDetailStatus = certDetailName ? getUserCertStatus(certDetailName) : null;
 
   // Modal data
   const modalCell = modalStageKey
