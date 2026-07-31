@@ -10,6 +10,22 @@ const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
 const MAGENTA = '#E21776';
 
+// キャリアマップ(CareerMapPage.tsxのTRACK_GROUPS)の職種グループ分けと揃える
+const COURSE_GROUP_CHIP: Record<string, string> = {
+  automation: 'QA Engineer',
+  management: 'QA Engineer',
+  security: 'QA Engineer',
+  software: 'アプリケーションエンジニア',
+  architecture: 'アプリケーションエンジニア',
+  infra: 'クラウドインフラエンジニア',
+  infosec: 'クラウドインフラエンジニア',
+  pm: 'PM',
+  bizdx: 'ビジネス・推進',
+  cs: 'ビジネス・推進',
+  data: 'ビジネス・推進',
+  marketing: 'ビジネス・推進',
+};
+
 interface CourseStatus {
   course: Course;
   latestAssessment: Assessment | null;
@@ -174,13 +190,13 @@ export default function CourseSelect() {
               <h2 style={{ fontSize: 18, fontWeight: 800, color: DEEP_BLUE, margin: 0 }}>
                 {course.name}
               </h2>
-              {course.id !== 'academia' && (
+              {COURSE_GROUP_CHIP[course.id] && (
                 <span style={{
                   fontSize: 10, fontWeight: 700, color: '#fff',
                   background: `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
                   padding: '2px 8px', borderRadius: 999, whiteSpace: 'nowrap',
                 }}>
-                  QA Engineer
+                  {COURSE_GROUP_CHIP[course.id]}
                 </span>
               )}
             </div>
