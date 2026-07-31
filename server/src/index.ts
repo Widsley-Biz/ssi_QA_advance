@@ -11,7 +11,8 @@ const app = express();
 app.use(cors({ origin: (process.env.CORS_ORIGIN ?? '').split(',').filter(Boolean) }));
 app.use(express.json());
 
-app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+// 注: /healthz はGCP側で予約済みのパスでCloud Runまで到達しないため使わない
+app.get('/health', (_req, res) => res.status(200).send('ok'));
 
 app.use(requireAuth);
 
