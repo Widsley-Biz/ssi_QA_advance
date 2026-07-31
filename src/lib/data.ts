@@ -1,43 +1,53 @@
 /**
- * Data access layer - abstracts Supabase/mock data access.
- * When VITE_SUPABASE_URL is set, fetches from Supabase.
- * Otherwise, uses mock data for development/demo.
+ * Data access layer - talks to the ssi-qa-advance-api backend (Identity Platform + Cloud SQL).
+ * When VITE_API_URL is unset, falls back to mock data for local development/demo.
  */
 
 import type { Course, Level, Skill, Team, Profile, Assessment, Answer } from '../types';
+import { getAuthHeader } from './firebase';
 
-// Lazy-load supabase client only when available
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _supabase: any = undefined;
-async function getSupabase() {
-  if (_supabase === undefined) {
-    const mod = await import('./supabase');
-    _supabase = mod.supabase ?? null;
+const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+
+function isApiMode(): boolean {
+  return !!API_URL;
+}
+
+async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeader,
+      ...(options.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? `API error: ${res.status}`);
   }
-  return _supabase;
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
 }
 
-function isSupabaseMode(): boolean {
-  return !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
-}
-
-// ── Mock data imports (tree-shaken in production with Supabase) ──
+// ── Mock data imports (tree-shaken in production with API configured) ──
 async function getMockData() {
   const mod = await import('../data/mockData');
   return mod;
 }
 
 // ══════════════════════════════════════
+// Current user profile (auto-created on first login)
+// ══════════════════════════════════════
+export async function fetchMe(): Promise<Profile> {
+  return api<Profile>('/me');
+}
+
+// ══════════════════════════════════════
 // Courses
 // ══════════════════════════════════════
 export async function fetchCourses(): Promise<Course[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    const { data, error } = await sb.from('courses').select('*').order('sort_order');
-    if (error) throw error;
-    return data as Course[];
-  }
+  if (isApiMode()) return api<Course[]>('/courses');
   const mock = await getMockData();
   return mock.courses;
 }
@@ -46,14 +56,9 @@ export async function fetchCourses(): Promise<Course[]> {
 // Levels
 // ══════════════════════════════════════
 export async function fetchLevels(courseId?: string): Promise<Level[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    let query = sb.from('levels').select('*').order('sort_order');
-    if (courseId) query = query.eq('course_id', courseId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data as Level[];
+  if (isApiMode()) {
+    const qs = courseId ? `?course_id=${encodeURIComponent(courseId)}` : '';
+    return api<Level[]>(`/levels${qs}`);
   }
   const mock = await getMockData();
   return courseId ? mock.levels.filter(l => l.course_id === courseId) : mock.levels;
@@ -63,14 +68,10 @@ export async function fetchLevels(courseId?: string): Promise<Level[]> {
 // Skills
 // ══════════════════════════════════════
 export async function fetchSkills(courseId?: string): Promise<Skill[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    let query = sb.from('skills').select('*').order('no');
-    if (courseId) query = query.eq('course_id', courseId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return (data ?? []).map((s: Record<string, unknown>) => ({
+  if (isApiMode()) {
+    const qs = courseId ? `?course_id=${encodeURIComponent(courseId)}` : '';
+    const data = await api<Record<string, unknown>[]>(`/skills${qs}`);
+    return data.map((s) => ({
       ...s,
       answer_type: s.answer_type ?? 'scale5',
       score_excluded: s.score_excluded ?? false,
@@ -90,13 +91,7 @@ export async function fetchSkills(courseId?: string): Promise<Skill[]> {
 // Teams
 // ══════════════════════════════════════
 export async function fetchTeams(): Promise<Team[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    const { data, error } = await sb.from('teams').select('*').order('name');
-    if (error) throw error;
-    return data as Team[];
-  }
+  if (isApiMode()) return api<Team[]>('/teams');
   const mock = await getMockData();
   return mock.teams;
 }
@@ -105,14 +100,9 @@ export async function fetchTeams(): Promise<Team[]> {
 // Profiles
 // ══════════════════════════════════════
 export async function fetchProfiles(teamId?: number): Promise<Profile[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    let query = sb.from('profiles').select('*').neq('role', 'retired');
-    if (teamId) query = query.eq('team_id', teamId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data as Profile[];
+  if (isApiMode()) {
+    const qs = teamId ? `?team_id=${teamId}` : '';
+    return api<Profile[]>(`/profiles${qs}`);
   }
   const mock = await getMockData();
   const profiles = mock.profiles.filter(p => p.role !== 'retired');
@@ -120,23 +110,23 @@ export async function fetchProfiles(teamId?: number): Promise<Profile[]> {
 }
 
 export async function fetchProfile(userId: string): Promise<Profile | null> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return null;
-    const { data, error } = await sb.from('profiles').select('*').eq('id', userId).single();
-    if (error) return null;
-    return data as Profile;
+  if (isApiMode()) {
+    try {
+      return await api<Profile>(`/profiles/${encodeURIComponent(userId)}`);
+    } catch {
+      return null;
+    }
   }
   const mock = await getMockData();
   return mock.profiles.find(p => p.id === userId) ?? null;
 }
 
 export async function updateProfile(userId: string, updates: Partial<Profile>): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb.from('profiles').update(updates).eq('id', userId);
-    if (error) throw error;
+  if (isApiMode()) {
+    await api(`/profiles/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
   }
 }
 
@@ -144,15 +134,12 @@ export async function updateProfile(userId: string, updates: Partial<Profile>): 
 // Assessments
 // ══════════════════════════════════════
 export async function fetchAssessments(userId?: string, courseId?: string): Promise<Assessment[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    let query = sb.from('assessments').select('*').order('submitted_at', { ascending: false });
-    if (userId) query = query.eq('user_id', userId);
-    if (courseId) query = query.eq('course_id', courseId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data as Assessment[];
+  if (isApiMode()) {
+    const params = new URLSearchParams();
+    if (userId) params.set('user_id', userId);
+    if (courseId) params.set('course_id', courseId);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return api<Assessment[]>(`/assessments${qs}`);
   }
   const mock = await getMockData();
   let assessments = [...mock.assessments];
@@ -170,13 +157,7 @@ export async function fetchLatestAssessment(userId: string, courseId: string): P
 // Answers
 // ══════════════════════════════════════
 export async function fetchAnswers(assessmentId: number): Promise<Answer[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    const { data, error } = await sb.from('answers').select('*').eq('assessment_id', assessmentId);
-    if (error) throw error;
-    return data as Answer[];
-  }
+  if (isApiMode()) return api<Answer[]>(`/answers?assessment_id=${assessmentId}`);
   const mock = await getMockData();
   return mock.answers.filter(a => a.assessment_id === assessmentId);
 }
@@ -196,37 +177,11 @@ export async function submitAssessment(
   answerMap: Record<number, number>,
   scoreSnapshot: Record<string, unknown>,
 ): Promise<{ assessmentId: number }> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) throw new Error('Supabase not available');
-
-    // Create assessment
-    const { data: assessment, error: aErr } = await sb
-      .from('assessments')
-      .insert({
-        user_id: userId,
-        course_id: courseId,
-        status: 'submitted',
-        submitted_at: new Date().toISOString(),
-        score_snapshot: scoreSnapshot,
-      })
-      .select()
-      .single();
-    if (aErr) throw aErr;
-
-    // Create answers
-    const answersToInsert = Object.entries(answerMap).map(([skillId, score]) => ({
-      assessment_id: assessment.id,
-      skill_id: Number(skillId),
-      score,
-    }));
-
-    if (answersToInsert.length > 0) {
-      const { error: ansErr } = await sb.from('answers').insert(answersToInsert);
-      if (ansErr) throw ansErr;
-    }
-
-    return { assessmentId: assessment.id };
+  if (isApiMode()) {
+    return api<{ assessmentId: number }>('/assessments', {
+      method: 'POST',
+      body: JSON.stringify({ course_id: courseId, answers: answerMap, score_snapshot: scoreSnapshot }),
+    });
   }
 
   // Mock mode
@@ -260,11 +215,8 @@ export async function submitAssessment(
 // Delete Assessment (leader/board only)
 // ══════════════════════════════════════
 export async function deleteAssessment(assessmentId: number): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb.from('assessments').delete().eq('id', assessmentId);
-    if (error) throw error;
+  if (isApiMode()) {
+    await api(`/assessments/${assessmentId}`, { method: 'DELETE' });
   }
 }
 
@@ -272,31 +224,19 @@ export async function deleteAssessment(assessmentId: number): Promise<void> {
 // Admin: Teams CRUD
 // ══════════════════════════════════════
 export async function createTeam(name: string): Promise<Team> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) throw new Error('Supabase not available');
-    const { data, error } = await sb.from('teams').insert({ name }).select().single();
-    if (error) throw error;
-    return data as Team;
-  }
-  throw new Error('Admin operations require Supabase');
+  if (isApiMode()) return api<Team>('/teams', { method: 'POST', body: JSON.stringify({ name }) });
+  throw new Error('Admin operations require the API backend');
 }
 
 export async function updateTeam(id: number, name: string): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb.from('teams').update({ name }).eq('id', id);
-    if (error) throw error;
+  if (isApiMode()) {
+    await api(`/teams/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
   }
 }
 
 export async function deleteTeam(id: number): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb.from('teams').delete().eq('id', id);
-    if (error) throw error;
+  if (isApiMode()) {
+    await api(`/teams/${id}`, { method: 'DELETE' });
   }
 }
 
@@ -314,37 +254,23 @@ export interface Invitation {
 }
 
 export async function fetchInvitations(): Promise<Invitation[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    const { data, error } = await sb.from('invitations').select('*').order('created_at', { ascending: false });
-    if (error) throw error;
-    return data as Invitation[];
-  }
+  if (isApiMode()) return api<Invitation[]>('/invitations');
   return [];
 }
 
 export async function createInvitation(email: string, role: string, teamId: number | null, invitedBy: string): Promise<Invitation> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) throw new Error('Supabase not available');
-    const { data, error } = await sb
-      .from('invitations')
-      .insert({ email: email.toLowerCase().trim(), role, team_id: teamId, invited_by: invitedBy, status: 'pending' })
-      .select()
-      .single();
-    if (error) throw error;
-    return data as Invitation;
+  if (isApiMode()) {
+    return api<Invitation>('/invitations', {
+      method: 'POST',
+      body: JSON.stringify({ email: email.toLowerCase().trim(), role, team_id: teamId, invited_by: invitedBy }),
+    });
   }
-  throw new Error('Invitations require Supabase');
+  throw new Error('Invitations require the API backend');
 }
 
 export async function deleteInvitation(id: number): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb.from('invitations').delete().eq('id', id);
-    if (error) throw error;
+  if (isApiMode()) {
+    await api(`/invitations/${id}`, { method: 'DELETE' });
   }
 }
 
@@ -404,91 +330,58 @@ export interface UserCertification {
 }
 
 export async function fetchCertifications(): Promise<CertificationRecord[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    const { data, error } = await sb.from('certifications').select('*').order('sort_order');
-    if (error) throw error;
-    return data as CertificationRecord[];
-  }
+  if (isApiMode()) return api<CertificationRecord[]>('/certifications');
   return [];
 }
 
 export async function fetchUserCertifications(userId?: string): Promise<UserCertification[]> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return [];
-    let query = sb.from('user_certifications').select('*').order('updated_at', { ascending: false });
-    if (userId) query = query.eq('user_id', userId);
-    const { data, error } = await query;
-    if (error) throw error;
-    return data as UserCertification[];
+  if (isApiMode()) {
+    const qs = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+    return api<UserCertification[]>(`/user_certifications${qs}`);
   }
   return [];
 }
 
-export async function upsertUserCertification(userId: string, certId: number, status: string): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) throw new Error('Supabase not available');
-    const { error } = await sb
-      .from('user_certifications')
-      .upsert(
-        { user_id: userId, certification_id: certId, status, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,certification_id' },
-      );
-    if (error) throw error;
+export async function upsertUserCertification(_userId: string, certId: number, status: string): Promise<void> {
+  if (isApiMode()) {
+    await api('/user_certifications', {
+      method: 'PUT',
+      body: JSON.stringify({ certification_id: certId, status }),
+    });
     return;
   }
-  throw new Error('Certification operations require Supabase');
+  throw new Error('Certification operations require the API backend');
 }
 
-export async function removeUserCertification(userId: string, certId: number): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb
-      .from('user_certifications')
-      .delete()
-      .eq('user_id', userId)
-      .eq('certification_id', certId);
-    if (error) throw error;
+export async function removeUserCertification(_userId: string, certId: number): Promise<void> {
+  if (isApiMode()) {
+    await api(`/user_certifications/${certId}`, { method: 'DELETE' });
     return;
   }
-  throw new Error('Certification operations require Supabase');
+  throw new Error('Certification operations require the API backend');
 }
 
 // ── Admin CRUD for certifications ──
 
 export async function createCertification(cert: Omit<CertificationRecord, 'id'>): Promise<CertificationRecord> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) throw new Error('Supabase not available');
-    const { data, error } = await sb.from('certifications').insert(cert).select().single();
-    if (error) throw error;
-    return data as CertificationRecord;
+  if (isApiMode()) {
+    return api<CertificationRecord>('/certifications', { method: 'POST', body: JSON.stringify(cert) });
   }
-  throw new Error('Admin operations require Supabase');
+  throw new Error('Admin operations require the API backend');
 }
 
 export async function updateCertification(id: number, updates: Partial<CertificationRecord>): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb.from('certifications').update(updates).eq('id', id);
-    if (error) throw error;
+  if (isApiMode()) {
+    await api(`/certifications/${id}`, { method: 'PATCH', body: JSON.stringify(updates) });
     return;
   }
-  throw new Error('Admin operations require Supabase');
+  throw new Error('Admin operations require the API backend');
 }
 
 export async function deleteCertification(id: number): Promise<void> {
-  if (isSupabaseMode()) {
-    const sb = await getSupabase();
-    if (!sb) return;
-    const { error } = await sb.from('certifications').delete().eq('id', id);
-    if (error) throw error;
+  if (isApiMode()) {
+    await api(`/certifications/${id}`, { method: 'DELETE' });
     return;
   }
-  throw new Error('Admin operations require Supabase');
+  throw new Error('Admin operations require the API backend');
 }

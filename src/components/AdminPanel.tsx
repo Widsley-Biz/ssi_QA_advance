@@ -90,7 +90,7 @@ function UserManagement() {
       // fetchProfiles filters out retired by default; we need a separate fetch
       // For retired users, we fetch all and filter client-side
       // Since the data layer filters retired, we work with what's available
-      // In Supabase mode, we'd need a separate query; for now mark retired separately
+      // API mode時は別途クエリが必要; 現状は空のまま
       setRetiredProfiles([]);
     } catch (err) {
       setError('データの取得に失敗しました');
@@ -322,7 +322,7 @@ function TeamManagement() {
       setTeams((prev) => [...prev, created]);
       setNewTeamName('');
     } catch (err) {
-      setError('チーム作成に失敗しました（Supabase接続が必要です）');
+      setError('チーム作成に失敗しました（API接続が必要です）');
       console.error(err);
     }
   };

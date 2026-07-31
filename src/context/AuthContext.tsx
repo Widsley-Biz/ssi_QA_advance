@@ -1,15 +1,17 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import type { Profile } from '../types';
-import { supabase } from '../lib/supabase';
+import { auth, googleProvider } from '../lib/firebase';
+import { signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { fetchMe } from '../lib/data';
 import { profiles as mockProfiles } from '../data/mockData';
 
 interface AuthContextType {
   user: Profile | null;
   loading: boolean;
-  /** Mock login – only works in demo mode (no Supabase) */
+  /** Mock login – only works in demo mode (no Identity Platform設定) */
   login: (userId: string) => void;
-  /** Google OAuth – only works when Supabase is configured */
+  /** Google OAuth – only works when Identity Platformが設定されている場合 */
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   /** Alias kept for backward-compat with existing components */
@@ -24,58 +26,40 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
-  const [loading, setLoading] = useState(!!supabase); // only loading when Supabase is active
+  const [loading, setLoading] = useState(!!auth); // only loading when Identity Platform is active
 
-  // --- Supabase mode helpers ------------------------------------------------
+  // --- Identity Platform mode helpers ------------------------------------------------
 
-  const loadProfile = useCallback(async (uid: string) => {
-    if (!supabase) return;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', uid)
-      .single();
-
-    if (error) {
-      console.error('Failed to load profile:', error.message);
+  const loadProfile = useCallback(async () => {
+    try {
+      const profile = await fetchMe();
+      setUser(profile);
+    } catch (err) {
+      console.error('Failed to load profile:', (err as Error).message);
       setUser(null);
-    } else if (data) {
-      setUser(data as unknown as Profile);
     }
   }, []);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!auth) return;
 
-    // Get current session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadProfile(session.user.id);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        await loadProfile();
+      } else {
+        setUser(null);
       }
       setLoading(false);
     });
 
-    // Listen for auth changes (login / logout / token refresh)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (session?.user) {
-          loadProfile(session.user.id);
-        } else {
-          setUser(null);
-        }
-      },
-    );
-
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => unsubscribe();
   }, [loadProfile]);
 
   // --- Auth actions ---------------------------------------------------------
 
   /** Mock login – demo mode only */
   const login = useCallback((userId: string) => {
-    if (supabase) {
+    if (auth) {
       console.warn('login() is for demo mode only. Use signInWithGoogle() instead.');
       return;
     }
@@ -83,24 +67,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (found) setUser(found);
   }, []);
 
-  /** Google OAuth via Supabase */
+  /** Google OAuth via Identity Platform */
   const signInWithGoogle = useCallback(async () => {
-    if (!supabase) {
-      console.warn('Supabase is not configured. Use login() for demo mode.');
+    if (!auth) {
+      console.warn('Identity Platform is not configured. Use login() for demo mode.');
       return;
     }
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
-    });
-    if (error) console.error('Google sign-in error:', error.message);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error('Google sign-in error:', (err as Error).message);
+    }
   }, []);
 
   /** Sign out – works in both modes */
   const signOut = useCallback(async () => {
-    if (supabase) {
-      const { error } = await supabase.auth.signOut();
-      if (error) console.error('Sign-out error:', error.message);
+    if (auth) {
+      await firebaseSignOut(auth);
     }
     setUser(null);
   }, []);

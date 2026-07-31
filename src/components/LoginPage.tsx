@@ -18,7 +18,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string>('');
   const [googleLoading, setGoogleLoading] = useState(false);
-  const isSupabaseMode = !!(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
+  const isProductionAuthMode = !!(import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
 
   const handleMockLogin = () => {
     if (!selectedId) return;
@@ -44,7 +44,7 @@ export default function LoginPage() {
         <h1 style={styles.logo}>Widsley SkillCheck</h1>
         <p style={styles.subtitle}>スキルチェックアプリ</p>
 
-        {isSupabaseMode ? (
+        {isProductionAuthMode ? (
           /* Production: Google OAuth */
           <>
             <p style={{ fontSize: 13, color: '#888', margin: '0 0 24px', lineHeight: 1.6 }}>
