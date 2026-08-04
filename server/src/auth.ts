@@ -65,12 +65,21 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     res.status(401).json({ error: 'missing bearer token' });
     return;
   }
+  let decoded;
   try {
-    const decoded = await getAuth().verifyIdToken(header.slice('Bearer '.length));
-    if (!decoded.email || !decoded.email.endsWith('@widsley.com')) {
-      res.status(403).json({ error: 'domain not allowed' });
-      return;
-    }
+    decoded = await getAuth().verifyIdToken(header.slice('Bearer '.length));
+  } catch (err) {
+    console.error('verifyIdToken failed:', err);
+    res.status(401).json({ error: 'invalid token', detail: (err as Error).message });
+    return;
+  }
+
+  if (!decoded.email || !decoded.email.endsWith('@widsley.com')) {
+    res.status(403).json({ error: 'domain not allowed' });
+    return;
+  }
+
+  try {
     req.uid = decoded.uid;
     req.profile = await ensureProfile(decoded.uid, decoded.email, decoded.name ?? decoded.email);
     if (req.profile.role === 'retired') {
@@ -79,8 +88,8 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
     next();
   } catch (err) {
-    console.error('verifyIdToken failed:', err);
-    res.status(401).json({ error: 'invalid token', detail: (err as Error).message });
+    console.error('ensureProfile (DB) failed:', err);
+    res.status(500).json({ error: 'profile lookup failed', detail: (err as Error).message });
   }
 }
 
