@@ -3,7 +3,10 @@ import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { pool } from './db.js';
 
-initializeApp({ credential: applicationDefault() });
+initializeApp({
+  credential: applicationDefault(),
+  projectId: process.env.GOOGLE_CLOUD_PROJECT ?? 'widsley-skillcheck',
+});
 
 export type Role = 'member' | 'leader' | 'board' | 'retired';
 
@@ -76,6 +79,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     }
     next();
   } catch (err) {
+    console.error('verifyIdToken failed:', err);
     res.status(401).json({ error: 'invalid token', detail: (err as Error).message });
   }
 }
