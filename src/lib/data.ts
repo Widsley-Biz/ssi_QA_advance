@@ -319,6 +319,7 @@ export interface CertificationRecord {
   category: string;
   reward: string | null;
   sort_order: number;
+  active: boolean;
 }
 
 export interface UserCertification {
@@ -363,7 +364,7 @@ export async function removeUserCertification(_userId: string, certId: number): 
 
 // ── Admin CRUD for certifications ──
 
-export async function createCertification(cert: Omit<CertificationRecord, 'id'>): Promise<CertificationRecord> {
+export async function createCertification(cert: Omit<CertificationRecord, 'id' | 'active'> & { active?: boolean }): Promise<CertificationRecord> {
   if (isApiMode()) {
     return api<CertificationRecord>('/certifications', { method: 'POST', body: JSON.stringify(cert) });
   }

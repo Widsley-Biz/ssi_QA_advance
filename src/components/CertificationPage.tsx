@@ -51,8 +51,10 @@ export default function CertificationPage() {
         fetchCertifications(),
         user ? fetchUserCertifications(user.id) : Promise.resolve([]),
       ]);
-      // 資格表には報奨金対象の資格のみ表示（キャリアパス推奨資格は除外）
-      setCerts(allCerts.filter(c => c.reward));
+      // 資格表には報奨金対象の資格のみ表示（キャリアパス推奨資格は除外）。
+      // 廃止・改称された資格(active=false)は、既に取得状況を記録済みのユーザーにのみ表示する
+      const acquiredCertIds = new Set(uc.map(u => u.certification_id));
+      setCerts(allCerts.filter(c => c.reward && (c.active || acquiredCertIds.has(c.id))));
       setUserCerts(uc);
     } catch (e) {
       console.error('Failed to load certifications:', e);

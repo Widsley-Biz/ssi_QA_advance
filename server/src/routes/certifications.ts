@@ -10,17 +10,17 @@ certificationsRouter.get('/certifications', async (_req, res) => {
 });
 
 certificationsRouter.post('/certifications', requireRole('board'), async (req, res) => {
-  const { name, description, level, category, reward, sort_order } = req.body;
+  const { name, description, level, category, reward, sort_order, active } = req.body;
   const { rows } = await pool.query(
-    `INSERT INTO certifications (name, description, level, category, reward, sort_order)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-    [name, description ?? '', level, category, reward ?? null, sort_order ?? 0],
+    `INSERT INTO certifications (name, description, level, category, reward, sort_order, active)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [name, description ?? '', level, category, reward ?? null, sort_order ?? 0, active ?? true],
   );
   res.status(201).json(rows[0]);
 });
 
 certificationsRouter.patch('/certifications/:id', requireRole('board'), async (req, res) => {
-  const allowed = ['name', 'description', 'level', 'category', 'reward', 'sort_order'];
+  const allowed = ['name', 'description', 'level', 'category', 'reward', 'sort_order', 'active'];
   const fields = Object.keys(req.body).filter(k => allowed.includes(k));
   if (fields.length === 0) {
     res.status(204).end();

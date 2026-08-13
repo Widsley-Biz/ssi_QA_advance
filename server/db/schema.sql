@@ -90,6 +90,9 @@ CREATE TABLE certifications (
   category text NOT NULL,
   reward text,
   sort_order int NOT NULL DEFAULT 0,
+  -- false: 資格表(新規選択)には表示しないが、既に取得状況が記録されている
+  -- ユーザーのマイページには引き続き表示する(廃止・改称された資格用)
+  active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
