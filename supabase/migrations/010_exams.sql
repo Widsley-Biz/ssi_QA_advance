@@ -23,6 +23,27 @@
 
 
 -- ------------------------------------------------------------
+-- ヘルパー
+-- ------------------------------------------------------------
+
+-- text配列を昇順に正規化する。選択肢の集合比較（順序を問わない一致判定）に使う
+CREATE OR REPLACE FUNCTION public.sorted_text_array(arr text[])
+RETURNS text[]
+LANGUAGE sql
+IMMUTABLE
+AS $$
+  -- 空配列に array_agg を掛けると NULL が返るため COALESCE で空配列に戻す。
+  -- これをしないと「全問未回答」のときに正誤判定が NULL になり採点に失敗する。
+  SELECT CASE WHEN arr IS NULL THEN NULL
+              ELSE COALESCE(
+                     (SELECT array_agg(x ORDER BY x) FROM unnest(arr) AS x),
+                     '{}'::text[]
+                   )
+         END;
+$$;
+
+
+-- ------------------------------------------------------------
 -- テーブル
 -- ------------------------------------------------------------
 
@@ -43,24 +64,32 @@ CREATE TABLE exams (
 -- 設問
 --   choices は {"a":"選択肢A","b":"選択肢B",...} のオブジェクト。
 --   キーの昇順が表示順になる(a,b,c,d)。
---   correct_key が choices のキーに存在することを CHECK で保証している
+--   correct_keys は正解キーの配列。複数正解の設問があるため配列で持つ
+--   (実際にAircourseの移行元データに「A;D」の2択正解が存在した)。
+--   correct_keys の全要素が choices のキーに存在することを CHECK で保証している
 --   (SQL直投入で問題を追加するため、採点不能な設問が混入しないようにする)。
 CREATE TABLE exam_questions (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   exam_id text NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
   no int NOT NULL,                                      -- 表示番号(シャッフル前の並び)
-  category text NOT NULL DEFAULT '',                    -- 例: 'locator' 'git' 'AAA' 'POM'
-  question text NOT NULL,
+  category text NOT NULL DEFAULT '',                    -- 例: 'locator' 'Git' 'AAA' 'POM'
+  question text NOT NULL,                               -- HTML。コードブロックを含む
   choices jsonb NOT NULL,
-  correct_key text NOT NULL,
-  explanation text NOT NULL DEFAULT '',
+  correct_keys text[] NOT NULL,
+  allow_multiple boolean NOT NULL DEFAULT false,         -- true ならUIはチェックボックス
+  explanation text NOT NULL DEFAULT '',                 -- HTML
   points int NOT NULL DEFAULT 1 CHECK (points > 0),     -- 傾斜配点
   difficulty int,                                       -- 1..3 想定。表示用
   UNIQUE (exam_id, no),
   CONSTRAINT exam_questions_choices_is_object
     CHECK (jsonb_typeof(choices) = 'object'),
-  CONSTRAINT exam_questions_correct_key_in_choices
-    CHECK (choices ? correct_key)
+  CONSTRAINT exam_questions_correct_keys_not_empty
+    CHECK (array_length(correct_keys, 1) >= 1),
+  CONSTRAINT exam_questions_correct_keys_in_choices
+    CHECK (choices ?& correct_keys),
+  -- 正解が2つ以上あるなら複数選択を許可していなければ回答不能になる
+  CONSTRAINT exam_questions_multiple_consistent
+    CHECK (array_length(correct_keys, 1) = 1 OR allow_multiple)
 );
 
 -- 受験記録
@@ -86,7 +115,7 @@ CREATE TABLE exam_attempt_answers (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   attempt_id bigint NOT NULL REFERENCES exam_attempts(id) ON DELETE CASCADE,
   question_id bigint NOT NULL REFERENCES exam_questions(id),
-  selected_key text,                                    -- NULL = 未回答
+  selected_keys text[],                                 -- NULL または空配列 = 未回答
   is_correct boolean NOT NULL,
   earned_points int NOT NULL,
   UNIQUE (attempt_id, question_id)
@@ -304,6 +333,7 @@ BEGIN
              'category', q.category,
              'question', q.question,
              'choices', q.choices,
+             'allow_multiple', q.allow_multiple,
              'points', q.points,
              'difficulty', q.difficulty
            )
@@ -381,9 +411,10 @@ BEGIN
              'category', q.category,
              'question', q.question,
              'choices', q.choices,
+             'allow_multiple', q.allow_multiple,
              'points', q.points,
-             'selected_key', aa.selected_key,
-             'correct_key', q.correct_key,
+             'selected_keys', COALESCE(aa.selected_keys, '{}'),
+             'correct_keys', q.correct_keys,
              'is_correct', aa.is_correct,
              'earned_points', aa.earned_points,
              'explanation', q.explanation
@@ -448,15 +479,31 @@ BEGIN
   SELECT * INTO v_exam FROM exams WHERE id = v_attempt.exam_id;
 
   -- 採点して回答を記録
-  INSERT INTO exam_attempt_answers (attempt_id, question_id, selected_key, is_correct, earned_points)
+  --   p_answers の各値は ["a"] / ["a","d"] の配列を想定する。
+  --   後方互換で "a" のような文字列も受け付ける。
+  --   正誤は「選んだ集合と正解集合が完全一致するか」で判定する（順序と重複は無視）。
+  WITH served AS (
+    SELECT
+      q.id, q.correct_keys, q.points,
+      CASE
+        WHEN jsonb_typeof(p_answers -> q.id::text) = 'array'
+          THEN ARRAY(SELECT DISTINCT jsonb_array_elements_text(p_answers -> q.id::text))
+        WHEN COALESCE(p_answers ->> q.id::text, '') <> ''
+          THEN ARRAY[p_answers ->> q.id::text]
+        ELSE '{}'::text[]
+      END AS sel
+    FROM unnest(v_attempt.question_ids) AS t(qid)
+    JOIN exam_questions q ON q.id = t.qid
+  )
+  INSERT INTO exam_attempt_answers (attempt_id, question_id, selected_keys, is_correct, earned_points)
   SELECT
     v_attempt.id,
-    q.id,
-    NULLIF(p_answers ->> q.id::text, ''),
-    COALESCE(p_answers ->> q.id::text, '') = q.correct_key,
-    CASE WHEN COALESCE(p_answers ->> q.id::text, '') = q.correct_key THEN q.points ELSE 0 END
-  FROM unnest(v_attempt.question_ids) AS t(qid)
-  JOIN exam_questions q ON q.id = t.qid;
+    s.id,
+    NULLIF(s.sel, '{}'::text[]),
+    public.sorted_text_array(s.sel) = public.sorted_text_array(s.correct_keys),
+    CASE WHEN public.sorted_text_array(s.sel) = public.sorted_text_array(s.correct_keys)
+         THEN s.points ELSE 0 END
+  FROM served s;
 
   SELECT COALESCE(SUM(earned_points), 0) INTO v_earned
   FROM exam_attempt_answers WHERE attempt_id = v_attempt.id;

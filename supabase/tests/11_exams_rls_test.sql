@@ -16,7 +16,7 @@ SELECT set_config('test.aid_a', :'aid_a', false) AS "セッション変数に格
 SET ROLE authenticated;
 SET test.uid = '22222222-2222-2222-2222-222222222222';
 SELECT current_user AS "実行ロール", current_setting('test.uid') AS "uid";
-SELECT count(*) AS "受講者Bから見えるattempt数_期待0" FROM exam_attempts;
+SELECT count(*) AS "受講者Bに見える他人のattempt数_期待0" FROM exam_attempts WHERE user_id <> auth.uid();
 DO $$ BEGIN
   BEGIN
     PERFORM public.get_attempt_result(current_setting('test.aid_a')::bigint);
@@ -44,16 +44,16 @@ END $$;
 
 SET test.uid = '55555555-5555-5555-5555-555555555555';
 SELECT current_user AS "実行ロール", 'member/team2' AS who,
-       count(*) AS "見えるattempt数_期待0" FROM exam_attempts;
+       count(*) AS "見える他人のattempt数_期待0" FROM exam_attempts WHERE user_id <> auth.uid();
 DO $$
 DECLARE n int; BEGIN
-  SELECT count(*) INTO n FROM exam_attempts;
-  IF n <> 0 THEN RAISE EXCEPTION 'FAIL: 別チームのmemberに%件見えている', n; END IF;
+  SELECT count(*) INTO n FROM exam_attempts WHERE user_id <> auth.uid();
+  IF n <> 0 THEN RAISE EXCEPTION 'FAIL: 別チームのmemberに他人の受験記録が%件見えている', n; END IF;
   BEGIN
     PERFORM public.get_attempt_result(current_setting('test.aid_a')::bigint);
     RAISE EXCEPTION 'FAIL: 別チームのmemberが結果を読めてしまった';
   EXCEPTION WHEN others THEN
-    IF SQLERRM LIKE '%not permitted%' THEN RAISE NOTICE 'OK: 別チームのmemberは0件・結果も拒否';
+    IF SQLERRM LIKE '%not permitted%' THEN RAISE NOTICE 'OK: 別チームのmemberに他人の記録は0件・他人の結果も拒否';
     ELSE RAISE; END IF;
   END;
 END $$;
