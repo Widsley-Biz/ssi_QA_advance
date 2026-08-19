@@ -106,6 +106,7 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
   },
   logo: {
+    flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     gap: 10,
@@ -124,20 +125,26 @@ const styles: Record<string, React.CSSProperties> = {
   },
   desktopNav: {
     display: 'flex',
-    gap: 16,
+    gap: 4,
     flex: 1,
+    minWidth: 0,              // 項目が増えても縮められるようにする
     justifyContent: 'center',
+    overflowX: 'auto',        // それでも入りきらない場合は横スクロール
+    scrollbarWidth: 'none',
   },
   navLink: {
     textDecoration: 'none',
     color: DEEP_BLUE,
     fontWeight: 600,
-    fontSize: 14,
-    padding: '4px 12px',
+    fontSize: 13.5,
+    padding: '4px 9px',
     borderRadius: 6,
     transition: 'background 0.15s',
+    whiteSpace: 'nowrap',     // 「模擬試験」等が途中で折り返さないように
+    flexShrink: 0,
   },
   userArea: {
+    flexShrink: 0,
     display: 'flex',
     alignItems: 'center',
     gap: 8,
