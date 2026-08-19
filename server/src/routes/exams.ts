@@ -35,12 +35,12 @@ examsRouter.get('/exams', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
             e.sort_order, e.is_published,
-            (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)          AS question_count,
-            (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id) AS total_points,
+            (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)::int      AS question_count,
+            (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id)::int AS total_points,
             (SELECT count(*) FROM exam_attempts a
-              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted') AS my_attempts,
+              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted')::int AS my_attempts,
             (SELECT max(a.earned_points) FROM exam_attempts a
-              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted') AS my_best_score
+              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted')::int AS my_best_score
        FROM exams e
       WHERE e.is_published OR $2 = 'board'
       ORDER BY e.group_name, e.sort_order, e.id`,

@@ -18,7 +18,7 @@ export default function ExamList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     (async () => {
@@ -53,9 +53,16 @@ export default function ExamList() {
     return [...map.entries()];
   }, [filtered]);
 
-  // 検索中は該当ジャンルを自動で開く。ジャンルが1つだけなら常に開いておく
+  // 既定は開いた状態。見出しクリックで閉じられる。検索中は常に開く
   const searching = query.trim().length > 0;
-  const isOpen = (g: string) => searching || groups.length === 1 || openGroup === g;
+  const isOpen = (g: string) => searching || !closedGroups.has(g);
+  const toggle = (g: string) =>
+    setClosedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(g)) next.delete(g);
+      else next.add(g);
+      return next;
+    });
 
   if (loading) return <div style={styles.page}>読み込み中…</div>;
   if (error) return <div style={styles.page}><div style={styles.error}>{error}</div></div>;
@@ -92,12 +99,12 @@ export default function ExamList() {
 
       {groups.map(([group, items]) => {
         const open = isOpen(group);
-        const totalAttempts = items.reduce((s, e) => s + e.my_attempts, 0);
+        const totalAttempts = items.reduce((s, e) => s + Number(e.my_attempts ?? 0), 0);
         return (
           <div key={group} style={styles.group}>
             <button
               style={styles.groupHead}
-              onClick={() => setOpenGroup(open && !searching ? null : group)}
+              onClick={() => !searching && toggle(group)}
             >
               <span style={styles.caret}>{open ? '▾' : '▸'}</span>
               <span style={styles.groupName}>{group}</span>
@@ -126,9 +133,9 @@ export default function ExamList() {
                     <div style={styles.myRow}>
                       {e.my_attempts > 0 ? (
                         <>
-                          受験 <b>{e.my_attempts}</b> 回 ／ 最高得点{' '}
-                          <b style={{ color: (e.my_best_score ?? 0) >= e.pass_score ? '#0a7d55' : DEEP_BLUE }}>
-                            {e.my_best_score}点
+                          受験 <b>{Number(e.my_attempts)}</b> 回 ／ 最高得点{' '}
+                          <b style={{ color: Number(e.my_best_score ?? 0) >= Number(e.pass_score) ? '#0a7d55' : DEEP_BLUE }}>
+                            {Number(e.my_best_score)}点
                           </b>
                         </>
                       ) : (
