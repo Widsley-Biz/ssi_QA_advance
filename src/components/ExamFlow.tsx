@@ -179,7 +179,7 @@ export default function ExamFlow() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  page: { maxWidth: 860, margin: '0 auto', padding: '0 20px 80px' },
+  page: { textAlign: 'left', maxWidth: 860, margin: '0 auto', padding: '0 20px 80px' },
   sticky: { position: 'sticky', top: 0, zIndex: 10, background: '#fff', borderBottom: '1px solid #E4EAEE', paddingTop: 16 },
   stickyInner: { paddingBottom: 12 },
   examName: { fontSize: 17, fontWeight: 800, color: DEEP_BLUE },
@@ -193,13 +193,13 @@ const styles: Record<string, React.CSSProperties> = {
   qCat: { fontSize: 11.5, fontWeight: 700, color: DEEP_BLUE, background: '#E4F3FA', borderRadius: 4, padding: '2px 8px' },
   qPts: { fontSize: 12, color: '#777' },
   qMulti: { fontSize: 11.5, fontWeight: 700, color: '#fff', background: '#E21776', borderRadius: 4, padding: '2px 8px' },
-  qBody: { marginTop: 14, fontSize: 14.5, lineHeight: 1.75, color: '#1a1a1a', overflowX: 'auto' },
+  qBody: { textAlign: 'left', marginTop: 14, fontSize: 14.5, lineHeight: 1.75, color: '#1a1a1a', overflowX: 'auto' },
   choices: { marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 },
   choice: { display: 'flex', gap: 12, alignItems: 'flex-start', textAlign: 'left', padding: '12px 14px', border: '1px solid #DDE4E9', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 14, lineHeight: 1.6, width: '100%' },
   choiceOn: { borderColor: CYAN, background: '#EAF6FC', boxShadow: `inset 0 0 0 1px ${CYAN}` },
   choiceKey: { flex: '0 0 auto', width: 26, height: 26, borderRadius: '50%', background: '#EEF3F6', color: '#555', fontWeight: 800, fontSize: 13, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' },
   choiceKeyOn: { background: GRADIENT, color: DEEP_BLUE },
-  choiceText: { whiteSpace: 'pre-wrap', fontFamily: 'inherit' },
+  choiceText: { textAlign: 'left', whiteSpace: 'pre-wrap', fontFamily: 'inherit' },
   submitArea: { marginTop: 32 },
   warn: { padding: '12px 16px', background: '#FFF8E6', borderLeft: '4px solid #C78A00', borderRadius: '0 6px 6px 0', fontSize: 13.5, lineHeight: 1.7, marginBottom: 14 },
   submitBtn: { width: '100%', padding: '14px 0', border: 'none', borderRadius: 10, background: GRADIENT, color: DEEP_BLUE, fontSize: 16, fontWeight: 800, cursor: 'pointer' },
@@ -207,7 +207,7 @@ const styles: Record<string, React.CSSProperties> = {
   overlay: { position: 'fixed', inset: 0, background: 'rgba(3,32,47,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 20 },
   dialog: { background: '#fff', borderRadius: 12, padding: '24px 26px', maxWidth: 420, width: '100%' },
   dialogTitle: { fontSize: 18, fontWeight: 800, color: DEEP_BLUE },
-  dialogBody: { fontSize: 14, lineHeight: 1.8, color: '#333', marginTop: 12 },
+  dialogBody: { textAlign: 'left', fontSize: 14, lineHeight: 1.8, color: '#333', marginTop: 12 },
   dialogBtns: { display: 'flex', gap: 10, marginTop: 22 },
   cancelBtn: { flex: 1, padding: '11px 0', border: '1px solid #CFD8DE', borderRadius: 8, background: '#fff', color: '#555', fontWeight: 700, cursor: 'pointer' },
   okBtn: { flex: 1, padding: '11px 0', border: 'none', borderRadius: 8, background: GRADIENT, color: DEEP_BLUE, fontWeight: 800, cursor: 'pointer' },

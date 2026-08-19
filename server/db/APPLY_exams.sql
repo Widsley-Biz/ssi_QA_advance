@@ -1,11 +1,4 @@
--- ============================================================
--- APPLY_exams.sql  –  模擬試験（筆記）本番適用用
--- ============================================================
--- Cloud SQL Studio に全文を貼り付けて実行するだけ。
--- exams.sql（テーブル定義）と exams_seed_playwright.sql（設問56問）を
--- 1本にまとめてあります。既存テーブルには一切触れません。
--- 設問部分は何度実行しても重複しません（DELETE + ON CONFLICT）。
--- ============================================================
+-- テーブル定義 + ジャンル列 + 設問56問を一括適用
 
 -- ============================================================
 -- exams.sql  –  模擬試験（筆記）
@@ -37,6 +30,7 @@ CREATE TABLE exams (
   name text NOT NULL,
   description text NOT NULL DEFAULT '',
   course_id text REFERENCES courses(id),                -- NULL可（コースに紐づかない試験もある）
+  group_name text NOT NULL DEFAULT '',                  -- ジャンル。一覧をこの単位でまとめる
   pass_score int NOT NULL,                              -- 合格点（素点）。後から変更可
   time_limit_min int,                                   -- NULL = 制限なし
   shuffle_questions boolean NOT NULL DEFAULT true,
@@ -103,6 +97,7 @@ CREATE TABLE exam_attempt_answers (
   UNIQUE (attempt_id, question_id)
 );
 
+CREATE INDEX idx_exams_group ON exams(group_name, sort_order);
 CREATE INDEX idx_exam_questions_exam ON exam_questions(exam_id, no);
 CREATE INDEX idx_exam_attempts_user ON exam_attempts(user_id, exam_id);
 CREATE INDEX idx_exam_attempt_answers_attempt ON exam_attempt_answers(attempt_id);
@@ -137,13 +132,15 @@ $$;
 
 -- Playwright社内試験 模擬筆記 セットA（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-a';
-INSERT INTO exams (id, name, description, pass_score, time_limit_min,
+INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
   ('playwright-mock-written-a', 'Playwright社内試験 模擬筆記 セットA',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
+   'Playwright社内試験',
    65, NULL, true, true, 1)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
+  group_name = EXCLUDED.group_name,
   pass_score = EXCLUDED.pass_score, is_published = EXCLUDED.is_published,
   sort_order = EXCLUDED.sort_order;
 
@@ -253,13 +250,15 @@ INSERT INTO exam_questions
 
 -- Playwright社内試験 模擬筆記 セットB（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-b';
-INSERT INTO exams (id, name, description, pass_score, time_limit_min,
+INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
   ('playwright-mock-written-b', 'Playwright社内試験 模擬筆記 セットB',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
+   'Playwright社内試験',
    65, NULL, true, true, 2)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
+  group_name = EXCLUDED.group_name,
   pass_score = EXCLUDED.pass_score, is_published = EXCLUDED.is_published,
   sort_order = EXCLUDED.sort_order;
 
@@ -365,13 +364,15 @@ INSERT INTO exam_questions
 
 -- Playwright社内試験 模擬筆記 セットC（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-c';
-INSERT INTO exams (id, name, description, pass_score, time_limit_min,
+INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
   ('playwright-mock-written-c', 'Playwright社内試験 模擬筆記 セットC',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
+   'Playwright社内試験',
    65, NULL, true, true, 3)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
+  group_name = EXCLUDED.group_name,
   pass_score = EXCLUDED.pass_score, is_published = EXCLUDED.is_published,
   sort_order = EXCLUDED.sort_order;
 
@@ -476,13 +477,15 @@ INSERT INTO exam_questions
 
 -- Playwright社内試験 模擬筆記 セットD（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-d';
-INSERT INTO exams (id, name, description, pass_score, time_limit_min,
+INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
   ('playwright-mock-written-d', 'Playwright社内試験 模擬筆記 セットD',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
+   'Playwright社内試験',
    65, NULL, true, true, 4)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
+  group_name = EXCLUDED.group_name,
   pass_score = EXCLUDED.pass_score, is_published = EXCLUDED.is_published,
   sort_order = EXCLUDED.sort_order;
 

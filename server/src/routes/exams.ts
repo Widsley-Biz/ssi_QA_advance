@@ -33,7 +33,7 @@ examsRouter.get('/exams', async (req, res) => {
   if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
 
   const { rows } = await pool.query(
-    `SELECT e.id, e.name, e.description, e.pass_score, e.time_limit_min,
+    `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
             e.sort_order, e.is_published,
             (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)          AS question_count,
             (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id) AS total_points,
@@ -43,7 +43,7 @@ examsRouter.get('/exams', async (req, res) => {
               WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted') AS my_best_score
        FROM exams e
       WHERE e.is_published OR $2 = 'board'
-      ORDER BY e.sort_order, e.id`,
+      ORDER BY e.group_name, e.sort_order, e.id`,
     [p.id, p.role],
   );
   res.json(rows);

@@ -28,6 +28,7 @@ CREATE TABLE exams (
   name text NOT NULL,
   description text NOT NULL DEFAULT '',
   course_id text REFERENCES courses(id),                -- NULL可（コースに紐づかない試験もある）
+  group_name text NOT NULL DEFAULT '',                  -- ジャンル。一覧をこの単位でまとめる
   pass_score int NOT NULL,                              -- 合格点（素点）。後から変更可
   time_limit_min int,                                   -- NULL = 制限なし
   shuffle_questions boolean NOT NULL DEFAULT true,
@@ -94,6 +95,7 @@ CREATE TABLE exam_attempt_answers (
   UNIQUE (attempt_id, question_id)
 );
 
+CREATE INDEX idx_exams_group ON exams(group_name, sort_order);
 CREATE INDEX idx_exam_questions_exam ON exam_questions(exam_id, no);
 CREATE INDEX idx_exam_attempts_user ON exam_attempts(user_id, exam_id);
 CREATE INDEX idx_exam_attempt_answers_attempt ON exam_attempt_answers(attempt_id);

@@ -28,6 +28,7 @@ export interface ExamSummary {
   id: string;
   name: string;
   description: string;
+  group_name: string;
   pass_score: number;
   time_limit_min: number | null;
   is_published: boolean;
