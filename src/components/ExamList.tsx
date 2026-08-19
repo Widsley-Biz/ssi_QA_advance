@@ -4,7 +4,6 @@ import { listExams, listAttempts, type ExamSummary, type AttemptSummary } from '
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
-const SEA_GREEN = '#50DAB0';
 const GRADIENT = 'linear-gradient(135deg, #50DAB0, #3DB7E4)';
 
 /**
