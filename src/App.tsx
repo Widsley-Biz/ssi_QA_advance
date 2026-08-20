@@ -15,6 +15,7 @@ import MyPage from './components/MyPage';
 import ExamList from './components/ExamList';
 import ExamFlow from './components/ExamFlow';
 import ExamResult from './components/ExamResult';
+import ExamPractical from './components/ExamPractical';
 
 function AppRoutes() {
   const { user } = useAuth();
@@ -44,6 +45,7 @@ function AppRoutes() {
           <Route path="/career" element={<CareerMapPage />} />
           <Route path="/exams" element={<ExamList />} />
           <Route path="/exams/:examId/take" element={<ExamFlow />} />
+          <Route path="/exams/:examId/practical" element={<ExamPractical />} />
           <Route path="/exams/result/:attemptId" element={<ExamResult />} />
           {(user.role === 'board') && (
             <Route path="/admin/*" element={<AdminPanel />} />

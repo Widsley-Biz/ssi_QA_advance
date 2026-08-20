@@ -34,19 +34,98 @@ examsRouter.get('/exams', async (req, res) => {
 
   const { rows } = await pool.query(
     `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
-            e.sort_order, e.is_published,
+            e.sort_order, e.is_published, e.kind,
             (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)::int      AS question_count,
             (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id)::int AS total_points,
             (SELECT count(*) FROM exam_attempts a
               WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted')::int AS my_attempts,
             (SELECT max(a.earned_points) FROM exam_attempts a
-              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted')::int AS my_best_score
+              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted')::int AS my_best_score,
+            -- 実技（kind='practical'）はここで採点しないので、自己申告の回数と最終日時だけ添える
+            (SELECT count(*) FROM exam_practical_submissions s
+              WHERE s.exam_id = e.id AND s.user_id = $1)::int AS my_practical_count,
+            (SELECT max(s.submitted_at) FROM exam_practical_submissions s
+              WHERE s.exam_id = e.id AND s.user_id = $1)      AS my_practical_at
        FROM exams e
       WHERE e.is_published OR $2 = 'board'
       ORDER BY e.group_name, e.sort_order, e.id`,
     [p.id, p.role],
   );
   res.json(rows);
+});
+
+/**
+ * 実技の案内。文言とリンクはDBの guide(jsonb) にしか無いので、
+ * 直すときはSQLを流すだけでよく、デプロイは要らない。
+ */
+examsRouter.get('/exams/:examId/practical', async (req, res) => {
+  const p = req.profile!;
+  if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
+
+  const exam = (await pool.query(
+    `SELECT id, name, description, group_name, kind, guide, is_published
+       FROM exams WHERE id = $1`,
+    [req.params.examId],
+  )).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  if (!exam.is_published && p.role !== 'board') return res.status(403).json({ error: 'not permitted' });
+  if (exam.kind !== 'practical') return res.status(409).json({ error: 'not a practical exam' });
+
+  const { rows: mine } = await pool.query(
+    `SELECT id, pr_url, note, submitted_at
+       FROM exam_practical_submissions
+      WHERE exam_id = $1 AND user_id = $2
+      ORDER BY submitted_at DESC
+      LIMIT 20`,
+    [exam.id, p.id],
+  );
+  res.json({ exam, my_submissions: mine });
+});
+
+/** 実技の自己申告。点数は受け取らない（採点はPRレビュー側） */
+examsRouter.post('/exams/:examId/practical/submissions', async (req, res) => {
+  const p = req.profile!;
+  if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
+
+  const exam = (await pool.query(
+    `SELECT id, kind, is_published FROM exams WHERE id = $1`,
+    [req.params.examId],
+  )).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  if (!exam.is_published && p.role !== 'board') return res.status(403).json({ error: 'not permitted' });
+  if (exam.kind !== 'practical') return res.status(409).json({ error: 'not a practical exam' });
+
+  // 貼り間違いをそのまま保存しないよう、GitHubのPR URLだけ通す（空欄は許可）
+  const prUrl = String(req.body?.pr_url ?? '').trim();
+  if (prUrl && !/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/\d+/.test(prUrl)) {
+    return res.status(400).json({
+      error: 'PRのURLは https://github.com/オーナー/リポジトリ/pull/番号 の形で入れてください',
+    });
+  }
+  const note = String(req.body?.note ?? '').trim().slice(0, 500);
+
+  const { rows } = await pool.query(
+    `INSERT INTO exam_practical_submissions (exam_id, user_id, pr_url, note)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, pr_url, note, submitted_at`,
+    [exam.id, p.id, prUrl, note],
+  );
+  res.status(201).json(rows[0]);
+});
+
+/** 自己申告の取り消し。自分の行だけ消せる（boardは全件） */
+examsRouter.delete('/exams/practical/submissions/:id', async (req, res) => {
+  const p = req.profile!;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'bad id' });
+
+  const { rowCount } = await pool.query(
+    `DELETE FROM exam_practical_submissions
+      WHERE id = $1 AND ($2 = 'board' OR user_id = $3)`,
+    [id, p.role, p.id],
+  );
+  if (!rowCount) return res.status(404).json({ error: 'not found' });
+  res.status(204).end();
 });
 
 /** 自分（または権限内）の受験履歴。マイページと管理画面が使う */

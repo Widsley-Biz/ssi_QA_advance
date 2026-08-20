@@ -116,41 +116,72 @@ export default function ExamList() {
 
             {open && (
               <div style={styles.grid}>
-                {items.map((e) => (
-                  <div key={e.id} style={styles.card}>
-                    <div style={styles.cardHead}>
-                      <div style={styles.cardName}>{e.name}</div>
-                      {!e.is_published && <span style={styles.draft}>非公開</span>}
-                    </div>
+                {items.map((e) => {
+                  // 実技はここで採点しない。問題数・満点・合格ラインを出すと
+                  // すべて0になって誤解を生むので、カードの中身から分岐させる
+                  const practical = e.kind === 'practical';
+                  return (
+                    <div key={e.id} style={styles.card}>
+                      <div style={styles.cardHead}>
+                        <div style={styles.cardName}>{e.name}</div>
+                        {practical && <span style={styles.practical}>実技</span>}
+                        {!e.is_published && <span style={styles.draft}>非公開</span>}
+                      </div>
 
-                    <div style={styles.metaRow}>
-                      <Meta label="問題数" value={`${e.question_count}問`} />
-                      <Meta label="満点" value={`${e.total_points}点`} />
-                      <Meta label="合格ライン" value={`${e.pass_score}点`} />
-                      <Meta label="制限時間" value={e.time_limit_min ? `${e.time_limit_min}分` : 'なし'} />
-                    </div>
-
-                    <div style={styles.myRow}>
-                      {e.my_attempts > 0 ? (
-                        <>
-                          受験 <b>{Number(e.my_attempts)}</b> 回 ／ 最高得点{' '}
-                          <b style={{ color: Number(e.my_best_score ?? 0) >= Number(e.pass_score) ? '#0a7d55' : DEEP_BLUE }}>
-                            {Number(e.my_best_score)}点
-                          </b>
-                        </>
+                      {practical ? (
+                        <div style={styles.practicalDesc}>{e.description}</div>
                       ) : (
-                        <span style={{ color: '#888' }}>まだ受験していません</span>
+                        <div style={styles.metaRow}>
+                          <Meta label="問題数" value={`${e.question_count}問`} />
+                          <Meta label="満点" value={`${e.total_points}点`} />
+                          <Meta label="合格ライン" value={`${e.pass_score}点`} />
+                          <Meta label="制限時間" value={e.time_limit_min ? `${e.time_limit_min}分` : 'なし'} />
+                        </div>
                       )}
-                    </div>
 
-                    <button
-                      style={styles.startBtn}
-                      onClick={() => navigate(`/exams/${encodeURIComponent(e.id)}/take`)}
-                    >
-                      {e.my_attempts > 0 ? 'もう一度受ける' : '受験する'}
-                    </button>
-                  </div>
-                ))}
+                      <div style={styles.myRow}>
+                        {practical ? (
+                          Number(e.my_practical_count) > 0 ? (
+                            <>
+                              提出 <b>{Number(e.my_practical_count)}</b> 回
+                              {e.my_practical_at && (
+                                <> ／ 最終 {new Date(e.my_practical_at).toLocaleDateString('ja-JP')}</>
+                              )}
+                            </>
+                          ) : (
+                            <span style={{ color: '#888' }}>まだ提出していません</span>
+                          )
+                        ) : e.my_attempts > 0 ? (
+                          <>
+                            受験 <b>{Number(e.my_attempts)}</b> 回 ／ 最高得点{' '}
+                            <b style={{ color: Number(e.my_best_score ?? 0) >= Number(e.pass_score) ? '#0a7d55' : DEEP_BLUE }}>
+                              {Number(e.my_best_score)}点
+                            </b>
+                          </>
+                        ) : (
+                          <span style={{ color: '#888' }}>まだ受験していません</span>
+                        )}
+                      </div>
+
+                      <button
+                        style={practical ? styles.guideBtn : styles.startBtn}
+                        onClick={() =>
+                          navigate(
+                            practical
+                              ? `/exams/${encodeURIComponent(e.id)}/practical`
+                              : `/exams/${encodeURIComponent(e.id)}/take`,
+                          )
+                        }
+                      >
+                        {practical
+                          ? '進め方を見る'
+                          : e.my_attempts > 0
+                            ? 'もう一度受ける'
+                            : '受験する'}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -226,6 +257,9 @@ const styles: Record<string, React.CSSProperties> = {
   cardHead: { display: 'flex', alignItems: 'center', gap: 10 },
   cardName: { fontSize: 15.5, fontWeight: 700, color: DEEP_BLUE },
   draft: { fontSize: 11, fontWeight: 700, color: '#fff', background: '#999', borderRadius: 4, padding: '2px 8px' },
+  practical: { fontSize: 11, fontWeight: 700, color: DEEP_BLUE, background: '#CAF4E7', borderRadius: 4, padding: '2px 8px' },
+  practicalDesc: { fontSize: 12.5, color: '#444', lineHeight: 1.6, marginTop: 12 },
+  guideBtn: { width: '100%', marginTop: 14, padding: '10px 0', border: `1px solid ${CYAN}`, borderRadius: 8, background: '#fff', color: DEEP_BLUE, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' },
   metaRow: { display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' },
   meta: { minWidth: 58 },
   metaLabel: { fontSize: 11, color: '#888' },

@@ -24,11 +24,19 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/**
+ * 'written'   … クリックすると出題が始まる（従来の筆記）
+ * 'practical' … 説明ページを1枚挟んで、GitHubリポジトリと練習サイトへ送る。
+ *               採点はPRレビュー側で行うので、ここでは点数を持たない。
+ */
+export type ExamKind = 'written' | 'practical';
+
 export interface ExamSummary {
   id: string;
   name: string;
   description: string;
   group_name: string;
+  kind: ExamKind;
   pass_score: number;
   time_limit_min: number | null;
   is_published: boolean;
@@ -36,6 +44,41 @@ export interface ExamSummary {
   total_points: number;
   my_attempts: number;
   my_best_score: number | null;
+  /** 実技のみ。自己申告の回数と最終日時 */
+  my_practical_count: number;
+  my_practical_at: string | null;
+}
+
+/** 実技の案内。文言とリンクはサーバー（DBのguide列）が持っている */
+export interface PracticalGuide {
+  intro: string;
+  what_we_see?: string[];
+  steps?: { no: number; title: string; body: string }[];
+  links?: { label: string; url: string; note?: string; primary?: boolean }[];
+  contents?: { path: string; body: string }[];
+  grading?: string;
+  answers_policy?: string;
+  note?: string;
+}
+
+export interface PracticalSubmission {
+  id: number;
+  pr_url: string;
+  note: string;
+  submitted_at: string;
+}
+
+export interface PracticalDetail {
+  exam: {
+    id: string;
+    name: string;
+    description: string;
+    group_name: string;
+    kind: ExamKind;
+    guide: PracticalGuide;
+    is_published: boolean;
+  };
+  my_submissions: PracticalSubmission[];
 }
 
 /** 受験中の設問。正解は含まれない */
@@ -102,3 +145,20 @@ export const getAttemptResult = (attemptId: number) =>
   api<ExamResult>(`/exams/attempts/${attemptId}`);
 export const listAttempts = (userId?: string) =>
   api<AttemptSummary[]>(`/exams/attempts${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`);
+
+export const getPractical = (examId: string) =>
+  api<PracticalDetail>(`/exams/${encodeURIComponent(examId)}/practical`);
+export const submitPractical = (examId: string, prUrl: string, note: string) =>
+  api<PracticalSubmission>(`/exams/${encodeURIComponent(examId)}/practical/submissions`, {
+    method: 'POST',
+    body: JSON.stringify({ pr_url: prUrl, note }),
+  });
+export const deletePracticalSubmission = async (id: number) => {
+  // 204 が返るので json() を呼ばない
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_URL}/exams/practical/submissions/${id}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeader },
+  });
+  if (!res.ok) throw new Error('取り消しに失敗しました');
+};
