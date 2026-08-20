@@ -182,10 +182,10 @@ export default function ExamPractical() {
       <section style={styles.section}>
         <h2 style={styles.h2}>提出したら記録しておく</h2>
         <p style={styles.formLead}>
-          点数はここでは付きません。<b>OJT担当者がレビューに入りやすくなる</b>ので、
+          点数はここでは付きません。<b>講師がレビューに入りやすくなる</b>ので、
           Pull Requestを出したら記録しておいてください。何度出し直しても構いません。
         </p>
-        {done && <div style={styles.okMsg}>記録しました。OJT担当者にレビューを依頼してください。</div>}
+        {done && <div style={styles.okMsg}>記録しました。講師にレビューを依頼してください。</div>}
         {formError && <div style={styles.error}>{formError}</div>}
         <input
           value={prUrl}
