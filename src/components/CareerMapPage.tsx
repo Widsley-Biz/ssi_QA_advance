@@ -522,6 +522,34 @@ export default function CareerMapPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ── 全体像モーダル(career-map-full.html を縮小表示) ──
+  const FULL_MAP_WIDTH = 1800; // 元HTMLの想定幅(.wrap max-width 1720px + body padding)
+  const [showFullMap, setShowFullMap] = useState(false);
+  const [fullMapScale, setFullMapScale] = useState(1);
+  const [fullMapHeight, setFullMapHeight] = useState(1200);
+  const fullMapContainerRef = useRef<HTMLDivElement>(null);
+  const fullMapIframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (!showFullMap) return;
+    const updateScale = () => {
+      const containerWidth = fullMapContainerRef.current?.clientWidth ?? window.innerWidth;
+      setFullMapScale(Math.min(1, (containerWidth - 16) / FULL_MAP_WIDTH));
+    };
+    updateScale();
+    window.addEventListener('resize', updateScale);
+    return () => window.removeEventListener('resize', updateScale);
+  }, [showFullMap]);
+
+  const handleFullMapLoad = () => {
+    try {
+      const doc = fullMapIframeRef.current?.contentDocument;
+      if (doc) setFullMapHeight(doc.documentElement.scrollHeight + 40);
+    } catch {
+      // 読み取れない場合は既定の高さのまま
+    }
+  };
+
   // Section 1 state
   const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -709,6 +737,14 @@ export default function CareerMapPage() {
         <p style={s.mainNote}>
           まだ決まっていない方は、Entry/Associateで幅広くスキルを身につけることで、どの専門にも進めます
         </p>
+
+        {/* 全体像モーダルを開くボタン */}
+        <div style={{ marginBottom: 16 }}>
+          <button onClick={() => setShowFullMap(true)} style={s.fullMapBtn}>
+            <span aria-hidden="true">&#128506;</span>
+            <span style={{ marginLeft: 8 }}>全体像はこちら</span>
+          </button>
+        </div>
 
         {/* Undecided expandable sections */}
         <div style={{ marginBottom: 16 }}>
@@ -1064,6 +1100,45 @@ export default function CareerMapPage() {
           </div>
         </div>
       )}
+
+      {/* ── 全体像モーダル ── */}
+      {showFullMap && (
+        <div style={s.fullMapOverlay} onClick={() => setShowFullMap(false)}>
+          <div style={s.fullMapCard} onClick={e => e.stopPropagation()}>
+            <div style={s.fullMapHeader}>
+              <span style={s.fullMapHeaderTitle}>キャリアマップ 全体像</span>
+              <button onClick={() => setShowFullMap(false)} style={s.modalClose}>
+                &#10005;
+              </button>
+            </div>
+            <div ref={fullMapContainerRef} style={s.fullMapScroll}>
+              <div
+                style={{
+                  width: FULL_MAP_WIDTH * fullMapScale,
+                  height: fullMapHeight * fullMapScale,
+                }}
+              >
+                <div
+                  style={{
+                    width: FULL_MAP_WIDTH,
+                    height: fullMapHeight,
+                    transform: `scale(${fullMapScale})`,
+                    transformOrigin: 'top left',
+                  }}
+                >
+                  <iframe
+                    ref={fullMapIframeRef}
+                    src="/career-map-full.html"
+                    title="キャリアマップ全体像"
+                    onLoad={handleFullMapLoad}
+                    style={{ width: FULL_MAP_WIDTH, height: fullMapHeight, border: 0, display: 'block' }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1104,6 +1179,19 @@ const s: Record<string, CSSProperties> = {
   },
 
   // Undecided sections
+  fullMapBtn: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#fff',
+    background: `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`,
+    border: 'none',
+    borderRadius: 8,
+    padding: '10px 16px',
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+  },
   undecidedToggle: {
     display: 'flex',
     alignItems: 'center',
@@ -1484,6 +1572,50 @@ const s: Record<string, CSSProperties> = {
   },
 
   // Cert detail modal
+  fullMapOverlay: {
+    position: 'fixed' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(3,32,47,0.75)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10000,
+    padding: 8,
+  },
+  fullMapCard: {
+    position: 'relative' as const,
+    background: '#fff',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: '100vw',
+    height: '92vh',
+    display: 'flex',
+    flexDirection: 'column' as const,
+    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+    overflow: 'hidden',
+  },
+  fullMapHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '10px 16px',
+    borderBottom: '1px solid #e2e8f0',
+    flex: '0 0 auto',
+  },
+  fullMapHeaderTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: DEEP_BLUE,
+  },
+  fullMapScroll: {
+    flex: '1 1 auto',
+    overflow: 'auto' as const,
+    background: '#f8fafc',
+    WebkitOverflowScrolling: 'touch' as const,
+  },
   certDetailOverlay: {
     position: 'fixed' as const,
     top: 0,
