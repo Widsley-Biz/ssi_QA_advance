@@ -741,8 +741,7 @@ export default function CareerMapPage() {
         {/* 全体像モーダルを開くボタン */}
         <div style={{ marginBottom: 16 }}>
           <button onClick={() => setShowFullMap(true)} style={s.fullMapBtn}>
-            <span aria-hidden="true">&#128506;</span>
-            <span style={{ marginLeft: 8 }}>全体像はこちら</span>
+            全体像はこちら
           </button>
         </div>
 

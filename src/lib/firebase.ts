@@ -14,6 +14,7 @@ export const firebaseApp = apiKey && authDomain && projectId
   : null;
 
 export const auth = firebaseApp ? getAuth(firebaseApp) : null;
+if (auth) auth.languageCode = 'ja'; // Googleログインのポップアップを日本語表示にする
 
 export const googleProvider = new GoogleAuthProvider();
 // @widsley.com のGoogle Workspaceアカウントのみ許可(アカウント選択画面での絞り込み。
