@@ -214,33 +214,33 @@ export default function BoardView() {
         {/* Score table */}
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>全社得点一覧</h2>
-          <div style={{ overflowX: 'auto' }}>
+          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={styles.th}>氏名</th>
-                  <th style={styles.th}>チーム</th>
+                  <th style={styles.thCorner}>氏名</th>
+                  <th style={styles.thSticky}>チーム</th>
                   {courses.map(c => (
-                    <th key={c.id} style={styles.th} colSpan={c.type === 'leveled' ? 2 : 1}>
+                    <th key={c.id} style={styles.thSticky} colSpan={c.type === 'leveled' ? 2 : 1}>
                       {c.name}
                     </th>
                   ))}
-                  <th style={styles.th}>最終提出日</th>
+                  <th style={styles.thSticky}>最終提出日</th>
                 </tr>
                 <tr>
-                  <th style={styles.thSub}></th>
-                  <th style={styles.thSub}></th>
+                  <th style={styles.thSubCorner}></th>
+                  <th style={styles.thSubSticky}></th>
                   {courses.map(c => (
                     c.type === 'leveled' ? (
                       <React.Fragment key={c.id}>
-                        <th style={styles.thSub}>達成率</th>
-                        <th style={styles.thSub}>レベル</th>
+                        <th style={styles.thSubSticky}>達成率</th>
+                        <th style={styles.thSubSticky}>レベル</th>
                       </React.Fragment>
                     ) : (
-                      <th key={c.id} style={styles.thSub}>達成率</th>
+                      <th key={c.id} style={styles.thSubSticky}>達成率</th>
                     )
                   ))}
-                  <th style={styles.thSub}></th>
+                  <th style={styles.thSubSticky}></th>
                 </tr>
               </thead>
               <tbody>
@@ -253,7 +253,7 @@ export default function BoardView() {
                 ) : (
                   scoreRows.map((row) => (
                     <tr key={row.id} style={styles.tr}>
-                      <td style={{ ...styles.td, fontWeight: 600, color: DEEP_BLUE }}>{row.name}</td>
+                      <td style={{ ...styles.tdSticky, fontWeight: 600, color: DEEP_BLUE }}>{row.name}</td>
                       <td style={styles.td}>{row.teamName}</td>
                       {courses.map(c => {
                         const cr = row.courseRates[c.id];
@@ -435,6 +435,63 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid #eee',
     background: '#fafbfc',
   },
+  // ヘッダー1行目: 縦スクロール時に上端へ固定
+  thSticky: {
+    padding: '12px 14px',
+    textAlign: 'left' as const,
+    fontSize: 13,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    borderBottom: '2px solid #eee',
+    background: '#fafbfc',
+    whiteSpace: 'nowrap' as const,
+    position: 'sticky' as const,
+    top: 0,
+    zIndex: 2,
+  },
+  // ヘッダー2行目(達成率/レベル): 1行目の高さ分下げて固定
+  thSubSticky: {
+    padding: '6px 14px',
+    textAlign: 'left' as const,
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#999',
+    borderBottom: '1px solid #eee',
+    background: '#fafbfc',
+    position: 'sticky' as const,
+    top: 42,
+    zIndex: 2,
+  },
+  // 左上角(氏名見出し): 縦・横どちらのスクロールでも固定
+  thCorner: {
+    padding: '12px 14px',
+    textAlign: 'left' as const,
+    fontSize: 13,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    borderBottom: '2px solid #eee',
+    borderRight: '1px solid #eee',
+    background: '#fafbfc',
+    whiteSpace: 'nowrap' as const,
+    position: 'sticky' as const,
+    top: 0,
+    left: 0,
+    zIndex: 3,
+  },
+  thSubCorner: {
+    padding: '6px 14px',
+    textAlign: 'left' as const,
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#999',
+    borderBottom: '1px solid #eee',
+    borderRight: '1px solid #eee',
+    background: '#fafbfc',
+    position: 'sticky' as const,
+    top: 42,
+    left: 0,
+    zIndex: 3,
+  },
   tr: {
     borderBottom: '1px solid #f0f0f0',
   },
@@ -443,6 +500,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: '#333',
     whiteSpace: 'nowrap' as const,
+  },
+  // 氏名セル: 横スクロール時に左端へ固定
+  tdSticky: {
+    padding: '10px 14px',
+    fontSize: 13,
+    color: '#333',
+    whiteSpace: 'nowrap' as const,
+    position: 'sticky' as const,
+    left: 0,
+    zIndex: 1,
+    background: '#fff',
+    borderRight: '1px solid #f0f0f0',
   },
   levelBadge: {
     fontSize: 12,
