@@ -97,7 +97,7 @@ INSERT INTO exams (
     'links', jsonb_build_array(
       jsonb_build_object(
         'label', '練習サイトを開く',
-        'url', 'https://bookshelf-practice-site.web.app',
+        'url', 'https://ssi-bookshelf-practice.web.app',
         'note', 'テスト対象のサイト。ログイン不要で誰でも触れます',
         'primary', true),
       jsonb_build_object(
