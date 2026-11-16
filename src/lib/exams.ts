@@ -47,6 +47,11 @@ export interface ExamSummary {
   /** 実技のみ。自己申告の回数と最終日時 */
   my_practical_count: number;
   my_practical_at: string | null;
+  /** 正式試験。NULLなら常時公開・無制限 */
+  opens_at: string | null;
+  closes_at: string | null;
+  max_attempts: number | null;
+  materials: { label: string; url: string; note?: string }[] | null;
 }
 
 /** 実技の案内。文言とリンクはサーバー（DBのguide列）が持っている */
@@ -121,6 +126,20 @@ export interface ExamResult {
   results: ExamResultRow[];
 }
 
+/** 正式試験で closes_at 前に提出した場合、score/results の代わりにこれが返る */
+export interface ExamPending {
+  attempt_id: number;
+  exam: { id: string; name: string };
+  status: 'submitted';
+  reveal_at: string;
+}
+
+export type ExamResultOrPending = ExamResult | ExamPending;
+
+export function isExamResult(r: ExamResultOrPending): r is ExamResult {
+  return 'results' in r;
+}
+
 export interface AttemptSummary {
   id: number;
   exam_id: string;
@@ -128,23 +147,68 @@ export interface AttemptSummary {
   user_id: string;
   display_name: string;
   submitted_at: string;
-  earned_points: number;
-  total_points: number;
-  passed: boolean;
+  /** 正式試験で終了日時前はnull（pending_revealがtrue） */
+  earned_points: number | null;
+  total_points: number | null;
+  passed: boolean | null;
+  pending_reveal: boolean;
 }
 
 export const listExams = () => api<ExamSummary[]>('/exams');
 export const startExam = (examId: string) =>
   api<ExamSession>(`/exams/${encodeURIComponent(examId)}/start`, { method: 'POST' });
 export const submitExam = (attemptId: number, answers: Record<number, string[]>) =>
-  api<ExamResult>(`/exams/attempts/${attemptId}/submit`, {
+  api<ExamResultOrPending>(`/exams/attempts/${attemptId}/submit`, {
     method: 'POST',
     body: JSON.stringify({ answers }),
   });
 export const getAttemptResult = (attemptId: number) =>
-  api<ExamResult>(`/exams/attempts/${attemptId}`);
+  api<ExamResultOrPending>(`/exams/attempts/${attemptId}`);
 export const listAttempts = (userId?: string) =>
   api<AttemptSummary[]>(`/exams/attempts${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`);
+
+/** 管理者向けレポート：メンバー×試験のマトリクス（1行=1セル） */
+export interface ExamReportCell {
+  user_id: string;
+  display_name: string;
+  team_id: number | null;
+  exam_id: string;
+  exam_name: string;
+  group_name: string;
+  sort_order: number;
+  excluded: boolean;
+  attempt_id: number | null;
+  earned_points: number | null;
+  total_points: number | null;
+  passed: boolean | null;
+  submitted_at: string | null;
+}
+export const getExamReport = () => api<ExamReportCell[]>('/exams/report');
+
+export interface AdminExamSchedule {
+  id: string;
+  name: string;
+  opens_at: string | null;
+  closes_at: string | null;
+  max_attempts: number | null;
+  materials: { label: string; url: string; note?: string }[] | null;
+  target_emails: string[];
+}
+export const getAdminExamSchedule = (examId: string) =>
+  api<AdminExamSchedule>(`/admin/exams/${encodeURIComponent(examId)}`);
+export const putAdminExamSchedule = (
+  examId: string,
+  body: { opens_at: string | null; closes_at: string | null; max_attempts: number | null },
+) =>
+  api<{ id: string; opens_at: string | null; closes_at: string | null; max_attempts: number | null }>(
+    `/admin/exams/${encodeURIComponent(examId)}/schedule`,
+    { method: 'PUT', body: JSON.stringify(body) },
+  );
+export const putAdminExamTargets = (examId: string, emails: string[]) =>
+  api<{ exam_id: string; emails: string[] }>(`/admin/exams/${encodeURIComponent(examId)}/targets`, {
+    method: 'PUT',
+    body: JSON.stringify({ emails }),
+  });
 
 export const getPractical = (examId: string) =>
   api<PracticalDetail>(`/exams/${encodeURIComponent(examId)}/practical`);

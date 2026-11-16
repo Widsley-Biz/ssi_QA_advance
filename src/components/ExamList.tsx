@@ -120,13 +120,29 @@ export default function ExamList() {
                   // 実技はここで採点しない。問題数・満点・合格ラインを出すと
                   // すべて0になって誤解を生むので、カードの中身から分岐させる
                   const practical = e.kind === 'practical';
+                  const isFormal = Boolean(e.opens_at || e.closes_at || e.max_attempts);
+                  const now = new Date();
+                  const notYetOpen = e.opens_at ? now < new Date(e.opens_at) : false;
+                  const closed = e.closes_at ? now > new Date(e.closes_at) : false;
+                  const attemptsLeft = e.max_attempts != null ? e.max_attempts - Number(e.my_attempts ?? 0) : null;
+                  const limitReached = attemptsLeft != null && attemptsLeft <= 0;
+                  const disabled = !practical && (notYetOpen || closed || limitReached);
                   return (
                     <div key={e.id} style={styles.card}>
                       <div style={styles.cardHead}>
                         <div style={styles.cardName}>{e.name}</div>
+                        {isFormal && <span style={styles.formal}>正式試験</span>}
                         {practical && <span style={styles.practical}>実技</span>}
                         {!e.is_published && <span style={styles.draft}>非公開</span>}
                       </div>
+
+                      {isFormal && (
+                        <div style={styles.scheduleRow}>
+                          {e.opens_at && <>開始 {new Date(e.opens_at).toLocaleString('ja-JP')} ／ </>}
+                          {e.closes_at && <>終了 {new Date(e.closes_at).toLocaleString('ja-JP')} ／ </>}
+                          {attemptsLeft != null && <>残り受験回数 {Math.max(attemptsLeft, 0)}回</>}
+                        </div>
+                      )}
 
                       {practical ? (
                         <div style={styles.practicalDesc}>{e.description}</div>
@@ -164,7 +180,11 @@ export default function ExamList() {
                       </div>
 
                       <button
-                        style={practical ? styles.guideBtn : styles.startBtn}
+                        style={{
+                          ...(practical ? styles.guideBtn : styles.startBtn),
+                          ...(disabled ? styles.btnDisabled : {}),
+                        }}
+                        disabled={disabled}
                         onClick={() =>
                           navigate(
                             practical
@@ -175,9 +195,15 @@ export default function ExamList() {
                       >
                         {practical
                           ? '進め方を見る'
-                          : e.my_attempts > 0
-                            ? 'もう一度受ける'
-                            : '受験する'}
+                          : notYetOpen
+                            ? 'まだ開始していません'
+                            : closed
+                              ? '受付終了'
+                              : limitReached
+                                ? '受験回数の上限です'
+                                : e.my_attempts > 0
+                                  ? 'もう一度受ける'
+                                  : '受験する'}
                       </button>
                     </div>
                   );
@@ -207,12 +233,22 @@ export default function ExamList() {
                   <tr key={a.id}>
                     <td style={styles.td}>{a.exam_name}</td>
                     <td style={styles.td}>{new Date(a.submitted_at).toLocaleString('ja-JP')}</td>
-                    <td style={styles.td}>{a.earned_points} / {a.total_points}</td>
-                    <td style={styles.td}>
-                      <span style={a.passed ? styles.pass : styles.fail}>
-                        {a.passed ? '合格' : '不合格'}
-                      </span>
-                    </td>
+                    {a.pending_reveal ? (
+                      <>
+                        <td style={styles.td} colSpan={2}>
+                          <span style={{ color: '#888' }}>提出済み（結果は試験終了後に表示）</span>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={styles.td}>{a.earned_points} / {a.total_points}</td>
+                        <td style={styles.td}>
+                          <span style={a.passed ? styles.pass : styles.fail}>
+                            {a.passed ? '合格' : '不合格'}
+                          </span>
+                        </td>
+                      </>
+                    )}
                     <td style={styles.td}>
                       <button style={styles.linkBtn} onClick={() => navigate(`/exams/result/${a.id}`)}>
                         結果を見る
@@ -258,6 +294,8 @@ const styles: Record<string, React.CSSProperties> = {
   cardName: { fontSize: 15.5, fontWeight: 700, color: DEEP_BLUE },
   draft: { fontSize: 11, fontWeight: 700, color: '#fff', background: '#999', borderRadius: 4, padding: '2px 8px' },
   practical: { fontSize: 11, fontWeight: 700, color: DEEP_BLUE, background: '#CAF4E7', borderRadius: 4, padding: '2px 8px' },
+  formal: { fontSize: 11, fontWeight: 700, color: '#fff', background: '#E21776', borderRadius: 4, padding: '2px 8px' },
+  scheduleRow: { fontSize: 11.5, color: '#666', marginTop: 10, lineHeight: 1.6 },
   practicalDesc: { fontSize: 12.5, color: '#444', lineHeight: 1.6, marginTop: 12 },
   guideBtn: { width: '100%', marginTop: 14, padding: '10px 0', border: `1px solid ${CYAN}`, borderRadius: 8, background: '#fff', color: DEEP_BLUE, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' },
   metaRow: { display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' },
@@ -266,6 +304,7 @@ const styles: Record<string, React.CSSProperties> = {
   metaValue: { fontSize: 14.5, fontWeight: 700, color: DEEP_BLUE, marginTop: 2 },
   myRow: { fontSize: 12.5, color: '#444', marginTop: 14, paddingTop: 10, borderTop: '1px solid #EEF2F4' },
   startBtn: { width: '100%', marginTop: 14, padding: '10px 0', border: 'none', borderRadius: 8, background: GRADIENT, color: DEEP_BLUE, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' },
+  btnDisabled: { opacity: 0.5, cursor: 'not-allowed' },
   subTitle: { fontSize: 19, fontWeight: 700, color: DEEP_BLUE, marginTop: 40, marginBottom: 12 },
   tableWrap: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13.5 },
