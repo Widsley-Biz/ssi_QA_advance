@@ -47,6 +47,8 @@ export interface Profile {
   role: RoleType;
   team_id: number | null;
   slack_id: string | null;
+  /** 主チーム(team_id)＋追加所属(profile_teams)の和集合。APIモードのみ返る */
+  team_ids?: number[];
 }
 
 export interface Assessment {

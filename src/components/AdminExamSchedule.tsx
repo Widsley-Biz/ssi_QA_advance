@@ -6,7 +6,7 @@ import {
   putAdminExamTargets,
   type ExamSummary,
 } from '../lib/exams';
-import { fetchProfiles, fetchTeams } from '../lib/data';
+import { fetchProfiles, fetchTeams, teamIdsOf } from '../lib/data';
 import type { Profile, Team } from '../types';
 
 const DEEP_BLUE = '#03202F';
@@ -91,9 +91,13 @@ export default function AdminExamSchedule() {
       : profiles;
     const map = new Map<string, Profile[]>();
     for (const p of filtered) {
-      const g = teams.find((t) => t.id === p.team_id)?.name ?? '未所属';
-      if (!map.has(g)) map.set(g, []);
-      map.get(g)!.push(p);
+      const ids = teamIdsOf(p);
+      const groups = ids.length > 0 ? ids.map((id) => teams.find((t) => t.id === id)?.name ?? '未所属') : ['未所属'];
+      // 複数チーム所属者は、所属している全チームのグループに表示する（重複OK。選択状態は共通）
+      for (const g of new Set(groups)) {
+        if (!map.has(g)) map.set(g, []);
+        map.get(g)!.push(p);
+      }
     }
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, 'ja'));
   }, [profiles, teams, memberQuery]);

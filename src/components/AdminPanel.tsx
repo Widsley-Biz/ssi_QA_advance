@@ -20,6 +20,9 @@ import {
   createCertification,
   updateCertification,
   deleteCertification,
+  teamIdsOf,
+  addProfileTeam,
+  removeProfileTeam,
 } from '../lib/data';
 import type { Invitation, CertificationRecord } from '../lib/data';
 import AdminExamReport from './AdminExamReport';
@@ -161,8 +164,13 @@ function UserManagement() {
         <ConfirmDialog
           message={confirmAction.message}
           onConfirm={async () => {
-            await confirmAction.action();
-            setConfirmAction(null);
+            try {
+              await confirmAction.action();
+              setConfirmAction(null);
+            } catch (err) {
+              setConfirmAction(null);
+              alert(err instanceof Error ? err.message : '操作に失敗しました');
+            }
           }}
           onCancel={() => setConfirmAction(null)}
         />
@@ -306,7 +314,30 @@ function TeamManagement() {
   }, [loadData]);
 
   const membersOfTeam = (teamId: number) =>
-    profiles.filter((p) => p.team_id === teamId);
+    profiles.filter((p) => teamIdsOf(p).includes(teamId));
+
+  const handleAddMember = async (teamId: number, profileId: string) => {
+    if (!profileId) return;
+    try {
+      setError('');
+      await addProfileTeam(profileId, teamId);
+      await loadData();
+    } catch (err) {
+      setError('メンバー追加に失敗しました');
+      console.error(err);
+    }
+  };
+
+  const handleRemoveMember = async (teamId: number, profile: Profile) => {
+    try {
+      setError('');
+      await removeProfileTeam(profile.id, teamId);
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'メンバー削除に失敗しました');
+      console.error(err);
+    }
+  };
 
   const handleCreateTeam = async () => {
     const name = newTeamName.trim();
@@ -399,8 +430,13 @@ function TeamManagement() {
         <ConfirmDialog
           message={confirmAction.message}
           onConfirm={async () => {
-            await confirmAction.action();
-            setConfirmAction(null);
+            try {
+              await confirmAction.action();
+              setConfirmAction(null);
+            } catch (err) {
+              setConfirmAction(null);
+              alert(err instanceof Error ? err.message : '操作に失敗しました');
+            }
           }}
           onCancel={() => setConfirmAction(null)}
         />
@@ -502,16 +538,42 @@ function TeamManagement() {
               {/* Member list */}
               {members.length > 0 && (
                 <div style={styles.memberList}>
-                  {members.map((m) => (
-                    <span key={m.id} style={styles.memberChip}>
-                      {m.display_name}
-                      {m.role === 'leader' && (
-                        <span style={styles.leaderBadge}>L</span>
-                      )}
-                    </span>
-                  ))}
+                  {members.map((m) => {
+                    const isPrimary = m.team_id === team.id;
+                    return (
+                      <span key={m.id} style={styles.memberChip}>
+                        {m.display_name}
+                        {m.role === 'leader' && (
+                          <span style={styles.leaderBadge}>L</span>
+                        )}
+                        {!isPrimary && (
+                          <button
+                            onClick={() => handleRemoveMember(team.id, m)}
+                            style={styles.chipRemoveBtn}
+                            title="このチームから外す（主チームはユーザー管理から変更）"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
                 </div>
               )}
+
+              {/* Add member (additional team; primary team is set in User Management) */}
+              <select
+                value=""
+                onChange={(e) => handleAddMember(team.id, e.target.value)}
+                style={styles.addMemberSelect}
+              >
+                <option value="">＋ メンバーを追加（他チーム所属者も可）</option>
+                {profiles
+                  .filter((p) => !teamIdsOf(p).includes(team.id))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>{p.display_name}</option>
+                  ))}
+              </select>
             </div>
           );
         })}
@@ -1539,6 +1601,25 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff',
     border: '1px solid #e0e0e0',
     borderRadius: 16,
+  },
+  chipRemoveBtn: {
+    border: 'none',
+    background: 'none',
+    color: '#aaa',
+    cursor: 'pointer',
+    fontSize: 11,
+    padding: 0,
+    marginLeft: 2,
+  },
+  addMemberSelect: {
+    marginTop: 10,
+    padding: '6px 10px',
+    borderRadius: 8,
+    border: '1px solid #ddd',
+    fontSize: 12.5,
+    background: '#fff',
+    color: '#666',
+    cursor: 'pointer',
   },
   leaderBadge: {
     display: 'inline-flex',
