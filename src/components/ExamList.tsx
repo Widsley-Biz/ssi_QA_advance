@@ -222,6 +222,7 @@ export default function ExamList() {
               <thead>
                 <tr>
                   <th style={styles.th}>試験</th>
+                  <th style={styles.th}>回答者</th>
                   <th style={styles.th}>提出日時</th>
                   <th style={styles.th}>得点</th>
                   <th style={styles.th}>判定</th>
@@ -232,6 +233,7 @@ export default function ExamList() {
                 {attempts.slice(0, 20).map((a) => (
                   <tr key={a.id}>
                     <td style={styles.td}>{a.exam_name}</td>
+                    <td style={styles.td}>{a.display_name}</td>
                     <td style={styles.td}>{new Date(a.submitted_at).toLocaleString('ja-JP')}</td>
                     {a.pending_reveal ? (
                       <>

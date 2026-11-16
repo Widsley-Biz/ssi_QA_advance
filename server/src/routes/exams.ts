@@ -73,6 +73,7 @@ examsRouter.get('/exams', async (req, res) => {
     `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
             e.sort_order, e.is_published, e.kind,
             e.opens_at, e.closes_at, e.max_attempts, e.materials,
+            (SELECT count(*) FROM exam_targets t WHERE t.exam_id = e.id)::int AS target_count,
             (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)::int      AS question_count,
             (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id)::int AS total_points,
             (SELECT count(*) FROM exam_attempts a
@@ -478,7 +479,8 @@ examsRouter.get('/admin/exams/:examId', requireRole('board'), async (req, res) =
   const examId = req.params.examId;
   const exam = (
     await pool.query(
-      `SELECT id, name, opens_at, closes_at, max_attempts, materials FROM exams WHERE id = $1`,
+      `SELECT id, name, group_name, is_published, opens_at, closes_at, max_attempts, materials
+         FROM exams WHERE id = $1`,
       [examId],
     )
   ).rows[0];
@@ -490,15 +492,19 @@ examsRouter.get('/admin/exams/:examId', requireRole('board'), async (req, res) =
   res.json({ ...exam, target_emails: targets.map((t) => t.email) });
 });
 
-/** 管理者向け：試験の開始/終了日時・受験回数上限を設定 */
+/** 管理者向け：試験の公開状態・開始/終了日時・受験回数上限を設定 */
 examsRouter.put('/admin/exams/:examId/schedule', requireRole('board'), async (req, res) => {
   const examId = req.params.examId;
-  const { opens_at, closes_at, max_attempts } = (req.body ?? {}) as {
+  const { is_published, opens_at, closes_at, max_attempts } = (req.body ?? {}) as {
+    is_published?: boolean;
     opens_at?: string | null;
     closes_at?: string | null;
     max_attempts?: number | null;
   };
 
+  if (typeof is_published !== 'boolean') {
+    return res.status(400).json({ error: 'is_published must be a boolean' });
+  }
   if (max_attempts != null && (!Number.isInteger(max_attempts) || max_attempts <= 0)) {
     return res.status(400).json({ error: 'max_attempts must be a positive integer or null' });
   }
@@ -511,10 +517,10 @@ examsRouter.put('/admin/exams/:examId/schedule', requireRole('board'), async (re
   }
 
   const { rows, rowCount } = await pool.query(
-    `UPDATE exams SET opens_at = $2, closes_at = $3, max_attempts = $4
+    `UPDATE exams SET is_published = $2, opens_at = $3, closes_at = $4, max_attempts = $5
       WHERE id = $1
-      RETURNING id, opens_at, closes_at, max_attempts`,
-    [examId, opensAt, closesAt, max_attempts ?? null],
+      RETURNING id, is_published, opens_at, closes_at, max_attempts`,
+    [examId, is_published, opensAt, closesAt, max_attempts ?? null],
   );
   if (!rowCount) return res.status(404).json({ error: 'exam not found' });
   res.json(rows[0]);

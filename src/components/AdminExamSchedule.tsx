@@ -33,6 +33,7 @@ function fromInputValue(v: string): string | null {
 export default function AdminExamSchedule() {
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [examId, setExamId] = useState('');
+  const [isPublished, setIsPublished] = useState(false);
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
   const [maxAttempts, setMaxAttempts] = useState('');
@@ -47,11 +48,16 @@ export default function AdminExamSchedule() {
   const [feedback, setFeedback] = useState('');
   const [error, setError] = useState('');
 
+  const loadExams = async () => {
+    const e = await listExams();
+    setExams(e);
+    return e;
+  };
+
   useEffect(() => {
     (async () => {
       try {
-        const [e, p, t] = await Promise.all([listExams(), fetchProfiles(), fetchTeams()]);
-        setExams(e);
+        const [e, p, t] = await Promise.all([loadExams(), fetchProfiles(), fetchTeams()]);
         setProfiles(p);
         setTeams(t);
         if (e.length > 0) setExamId(e[0].id);
@@ -71,6 +77,7 @@ export default function AdminExamSchedule() {
       setError('');
       try {
         const detail = await getAdminExamSchedule(examId);
+        setIsPublished(detail.is_published);
         setOpensAt(toInputValue(detail.opens_at));
         setClosesAt(toInputValue(detail.closes_at));
         setMaxAttempts(detail.max_attempts != null ? String(detail.max_attempts) : '');
@@ -123,16 +130,24 @@ export default function AdminExamSchedule() {
   };
 
   const handleSaveSchedule = async () => {
+    if (isPublished && selectedEmails.size === 0 && !opensAt && !closesAt) {
+      const ok = confirm(
+        '対象者・日程のどちらも未設定のまま公開すると、この試験は全員にいつでも表示されます。よろしいですか？',
+      );
+      if (!ok) return;
+    }
     setSaving(true);
     setFeedback('');
     setError('');
     try {
       await putAdminExamSchedule(examId, {
+        is_published: isPublished,
         opens_at: fromInputValue(opensAt),
         closes_at: fromInputValue(closesAt),
         max_attempts: maxAttempts.trim() ? Number(maxAttempts) : null,
       });
-      setFeedback('日程・受験回数を保存しました');
+      setFeedback('公開状態・日程・受験回数を保存しました');
+      await loadExams();
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally {
@@ -143,7 +158,7 @@ export default function AdminExamSchedule() {
   const handleSaveTargets = async () => {
     const emails = [...selectedEmails];
 
-    if (emails.length === 0 && originalEmailCount > 0) {
+    if (emails.length === 0 && originalEmailCount > 0 && isPublished) {
       const ok = confirm(
         '対象者を1人も登録しない状態で保存すると、この試験は「全員公開」に戻ります。よろしいですか？',
       );
@@ -157,6 +172,7 @@ export default function AdminExamSchedule() {
       const res = await putAdminExamTargets(examId, emails);
       setOriginalEmailCount(res.emails.length);
       setFeedback(`対象者を保存しました（${res.emails.length}名）`);
+      await loadExams();
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存に失敗しました');
     } finally {
@@ -168,21 +184,46 @@ export default function AdminExamSchedule() {
 
   return (
     <div>
-      <h2 style={styles.sectionTitle}>試験の日程・対象者設定</h2>
+      <h2 style={styles.sectionTitle}>試験の公開・日程・対象者設定</h2>
       <p style={styles.hint}>
-        開始/終了日時と受験回数上限を設定すると「正式試験」になります。終了日時までは本人に採点結果・解説を表示しません。
-        空欄に戻せば、既存の自習試験と同じ（常時公開・無制限）に戻ります。
+        「公開」をONにしないとboard以外には一切表示されません。対象者を1人も設定していない状態で
+        公開すると全員に表示されるため、正式試験は先に対象者・日程を設定してから公開してください。
+        終了日時までは本人に採点結果・解説を表示しません。
       </p>
 
-      <div style={styles.field}>
-        <label style={styles.label}>試験</label>
-        <select value={examId} onChange={(e) => setExamId(e.target.value)} style={styles.select}>
-          {exams.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.group_name ? `${e.group_name} / ` : ''}{e.name}
-            </option>
-          ))}
-        </select>
+      <div style={styles.overviewWrap}>
+        <table style={styles.overviewTable}>
+          <thead>
+            <tr>
+              <th style={styles.th}>試験</th>
+              <th style={styles.th}>公開</th>
+              <th style={styles.th}>開始</th>
+              <th style={styles.th}>終了</th>
+              <th style={styles.th}>回数上限</th>
+              <th style={styles.th}>対象者</th>
+            </tr>
+          </thead>
+          <tbody>
+            {exams.map((e) => (
+              <tr
+                key={e.id}
+                onClick={() => setExamId(e.id)}
+                style={{ ...styles.overviewRow, ...(e.id === examId ? styles.overviewRowActive : {}) }}
+              >
+                <td style={styles.td}>{e.group_name ? `${e.group_name} / ` : ''}{e.name}</td>
+                <td style={styles.td}>
+                  <span style={e.is_published ? styles.badgePublished : styles.badgeDraft}>
+                    {e.is_published ? '公開中' : '非公開'}
+                  </span>
+                </td>
+                <td style={styles.td}>{e.opens_at ? new Date(e.opens_at).toLocaleString('ja-JP') : '—'}</td>
+                <td style={styles.td}>{e.closes_at ? new Date(e.closes_at).toLocaleString('ja-JP') : '—'}</td>
+                <td style={styles.td}>{e.max_attempts ?? '無制限'}</td>
+                <td style={styles.td}>{e.target_count > 0 ? `${e.target_count}名` : '全員'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {detailLoading ? (
@@ -190,7 +231,20 @@ export default function AdminExamSchedule() {
       ) : (
         <>
           <div style={styles.card}>
-            <h3 style={styles.cardTitle}>日程・受験回数</h3>
+            <h3 style={styles.cardTitle}>公開・日程・受験回数</h3>
+            <label style={styles.publishRow}>
+              <input
+                type="checkbox"
+                checked={isPublished}
+                onChange={(e) => setIsPublished(e.target.checked)}
+              />
+              <span style={isPublished ? styles.badgePublished : styles.badgeDraft}>
+                {isPublished ? '公開中' : '非公開'}
+              </span>
+              <span style={{ fontSize: 12, color: '#888' }}>
+                （非公開の間はboard以外に一切表示されません）
+              </span>
+            </label>
             <div style={styles.row}>
               <div style={styles.field}>
                 <label style={styles.label}>開始日時（空欄=常時公開）</label>
@@ -223,7 +277,7 @@ export default function AdminExamSchedule() {
               </div>
             </div>
             <button style={styles.saveBtn} disabled={saving} onClick={handleSaveSchedule}>
-              {saving ? '保存中...' : '日程・受験回数を保存'}
+              {saving ? '保存中...' : '公開状態・日程・受験回数を保存'}
             </button>
           </div>
 
@@ -294,6 +348,15 @@ const styles: Record<string, React.CSSProperties> = {
   select: { padding: '9px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14, background: '#fff' },
   input: { padding: '9px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14 },
   saveBtn: { marginTop: 4, padding: '9px 22px', border: 'none', borderRadius: 8, background: `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`, color: DEEP_BLUE, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' },
+  overviewWrap: { overflowX: 'auto', border: '1px solid #e5eef5', borderRadius: 10, marginBottom: 24 },
+  overviewTable: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
+  th: { textAlign: 'left', padding: '9px 12px', fontWeight: 700, color: '#8893A4', fontSize: 11.5, background: '#f5f9fb', whiteSpace: 'nowrap' },
+  td: { padding: '8px 12px', color: DEEP_BLUE, whiteSpace: 'nowrap' },
+  overviewRow: { cursor: 'pointer', borderTop: '1px solid #f0f0f0' },
+  overviewRowActive: { background: '#EAF6FC' },
+  badgePublished: { fontSize: 11, fontWeight: 700, color: '#0a7d55', background: '#D8F0E5', borderRadius: 4, padding: '2px 8px', whiteSpace: 'nowrap' },
+  badgeDraft: { fontSize: 11, fontWeight: 700, color: '#888', background: '#eee', borderRadius: 4, padding: '2px 8px', whiteSpace: 'nowrap' },
+  publishRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, cursor: 'pointer' },
   memberList: { maxHeight: 320, overflowY: 'auto', border: '1px solid #e5eef5', borderRadius: 8, background: '#fff' },
   memberGroup: { borderBottom: '1px solid #f0f0f0' },
   memberGroupHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f5f9fb' },

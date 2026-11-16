@@ -52,6 +52,8 @@ export interface ExamSummary {
   closes_at: string | null;
   max_attempts: number | null;
   materials: { label: string; url: string; note?: string }[] | null;
+  /** 対象者(exam_targets)の設定件数。0件=全員対象 */
+  target_count: number;
 }
 
 /** 実技の案内。文言とリンクはサーバー（DBのguide列）が持っている */
@@ -188,6 +190,8 @@ export const getExamReport = () => api<ExamReportCell[]>('/exams/report');
 export interface AdminExamSchedule {
   id: string;
   name: string;
+  group_name: string;
+  is_published: boolean;
   opens_at: string | null;
   closes_at: string | null;
   max_attempts: number | null;
@@ -198,9 +202,14 @@ export const getAdminExamSchedule = (examId: string) =>
   api<AdminExamSchedule>(`/admin/exams/${encodeURIComponent(examId)}`);
 export const putAdminExamSchedule = (
   examId: string,
-  body: { opens_at: string | null; closes_at: string | null; max_attempts: number | null },
+  body: {
+    is_published: boolean;
+    opens_at: string | null;
+    closes_at: string | null;
+    max_attempts: number | null;
+  },
 ) =>
-  api<{ id: string; opens_at: string | null; closes_at: string | null; max_attempts: number | null }>(
+  api<{ id: string; is_published: boolean; opens_at: string | null; closes_at: string | null; max_attempts: number | null }>(
     `/admin/exams/${encodeURIComponent(examId)}/schedule`,
     { method: 'PUT', body: JSON.stringify(body) },
   );
