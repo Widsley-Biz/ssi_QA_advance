@@ -18,6 +18,8 @@ export interface Profile {
   team_id: number | null;
   slack_id: string | null;
   created_at: string;
+  /** 主チーム(team_id)＋追加所属(profile_teams)の和集合。TEAM_IDS_SUBQUERYを足したクエリのみ返る */
+  team_ids?: string[];
 }
 
 declare global {
