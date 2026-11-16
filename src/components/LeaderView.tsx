@@ -176,7 +176,10 @@ export default function LeaderView() {
               value={selectedTeamId}
               onChange={(e) => {
                 const v = e.target.value;
-                setSelectedTeamId(v === 'all' ? 'all' : Number(v));
+                // team.id/profile.team_idはDB上bigintでAPIからは文字列のまま返る。
+                // Number(v)に変換すると "2" !== 2 で全件フィルタが0件になるため、
+                // 型はnumberのままだが実体は文字列を保持する（既存コードの前提と合わせる）
+                setSelectedTeamId(v === 'all' ? 'all' : (v as unknown as number));
               }}
               style={{
                 padding: '8px 14px',
