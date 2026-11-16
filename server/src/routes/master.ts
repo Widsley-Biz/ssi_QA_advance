@@ -46,7 +46,46 @@ masterRouter.patch('/teams/:id', requireRole('board'), async (req, res) => {
   res.status(204).end();
 });
 
+/**
+ * チーム削除。フロント側の「在籍メンバー0人なら削除可」判定は
+ * profiles.team_id（主チーム）しか見ていないため、退職者やprofile_teams
+ * 経由の追加所属・招待中のteam_id参照が残っていると外部キー制約で
+ * 必ず失敗していた（エラーがUIに出ず「削除できない」ように見える不具合）。
+ * ここでサーバー側が最終判定を行い、在籍中(retired以外)のメンバーが
+ * 1人でもいれば409で明示的に拒否し、残っているのが退職者・招待の参照
+ * だけならクリアしてから削除する。
+ */
 masterRouter.delete('/teams/:id', requireRole('board'), async (req, res) => {
-  await pool.query('DELETE FROM teams WHERE id = $1', [req.params.id]);
-  res.status(204).end();
+  const teamId = Number(req.params.id);
+  if (!Number.isInteger(teamId)) return res.status(400).json({ error: 'bad id' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows } = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM profiles
+        WHERE role <> 'retired'
+          AND (team_id = $1 OR id IN (SELECT profile_id FROM profile_teams WHERE team_id = $1))`,
+      [teamId],
+    );
+    if (rows[0].n > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: `在籍中のメンバーが${rows[0].n}人いるため削除できません` });
+    }
+
+    // 残っているのは退職者・招待中の参照のみ。クリアしてから削除する
+    await client.query('UPDATE profiles SET team_id = NULL WHERE team_id = $1', [teamId]);
+    await client.query('UPDATE invitations SET team_id = NULL WHERE team_id = $1', [teamId]);
+    await client.query('DELETE FROM profile_teams WHERE team_id = $1', [teamId]);
+    await client.query('DELETE FROM teams WHERE id = $1', [teamId]);
+
+    await client.query('COMMIT');
+    res.status(204).end();
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
 });

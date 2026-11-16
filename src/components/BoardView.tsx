@@ -200,7 +200,10 @@ export default function BoardView() {
             <label style={styles.filterLabel}>チーム:</label>
             <select
               value={selectedTeam}
-              onChange={(e) => setSelectedTeam(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+              // team.id/profile.team_idはDB上bigintでAPIからは文字列のまま返る。
+              // Number(...)に変換すると "2" !== 2 で全件フィルタが0件になるため、
+              // 型はnumberのままだが実体は文字列を保持する（既存コードの前提と合わせる）
+              onChange={(e) => setSelectedTeam(e.target.value === 'all' ? 'all' : (e.target.value as unknown as number))}
               style={styles.select}
             >
               <option value="all">全チーム</option>

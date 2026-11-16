@@ -130,6 +130,29 @@ export async function updateProfile(userId: string, updates: Partial<Profile>): 
   }
 }
 
+/** 主チーム(team_id)＋追加所属(profile_teams)の和集合。APIを使わないデモモードはteam_idのみ */
+export function teamIdsOf(p: Profile): number[] {
+  if (p.team_ids) return p.team_ids;
+  return p.team_id != null ? [p.team_id] : [];
+}
+
+/** 追加チーム所属（profile_teams）に1件追加。主チームは変えない */
+export async function addProfileTeam(userId: string, teamId: number): Promise<void> {
+  if (isApiMode()) {
+    await api(`/profiles/${encodeURIComponent(userId)}/teams`, {
+      method: 'POST',
+      body: JSON.stringify({ team_id: teamId }),
+    });
+  }
+}
+
+/** 追加チーム所属（profile_teams）から1件削除。主チームと同じteam_idは不可 */
+export async function removeProfileTeam(userId: string, teamId: number): Promise<void> {
+  if (isApiMode()) {
+    await api(`/profiles/${encodeURIComponent(userId)}/teams/${teamId}`, { method: 'DELETE' });
+  }
+}
+
 // ══════════════════════════════════════
 // Assessments
 // ══════════════════════════════════════
