@@ -4,6 +4,15 @@ import { requireRole } from '../auth.js';
 
 export const certificationsRouter = Router();
 
+/** リーダーの所属チーム（主チーム or 追加所属）に属するprofile.idの集合 */
+function teamMemberIdsSubquery(paramIndex: number): string {
+  return `(
+    SELECT id FROM profiles WHERE team_id = $${paramIndex}
+    UNION
+    SELECT profile_id FROM profile_teams WHERE team_id = $${paramIndex}
+  )`;
+}
+
 certificationsRouter.get('/certifications', async (_req, res) => {
   const { rows } = await pool.query('SELECT * FROM certifications ORDER BY sort_order');
   res.json(rows);
@@ -49,7 +58,7 @@ certificationsRouter.get('/user_certifications', async (req, res) => {
   if (p.role === 'board') {
     // no scoping
   } else if (p.role === 'leader') {
-    clauses.push(`user_id IN (SELECT id FROM profiles WHERE team_id = $${values.length + 1})`);
+    clauses.push(`user_id IN ${teamMemberIdsSubquery(values.length + 1)}`);
     values.push(p.team_id);
   } else {
     clauses.push(`user_id = $${values.length + 1}`);

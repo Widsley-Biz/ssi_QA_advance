@@ -106,7 +106,7 @@ export async function fetchProfiles(teamId?: number): Promise<Profile[]> {
   }
   const mock = await getMockData();
   const profiles = mock.profiles.filter(p => p.role !== 'retired');
-  return teamId ? profiles.filter(p => p.team_id === teamId) : profiles;
+  return teamId != null ? profiles.filter(p => isInTeam(p, teamId)) : profiles;
 }
 
 export async function fetchProfile(userId: string): Promise<Profile | null> {
@@ -134,6 +134,18 @@ export async function updateProfile(userId: string, updates: Partial<Profile>): 
 export function teamIdsOf(p: Profile): number[] {
   if (p.team_ids) return p.team_ids;
   return p.team_id != null ? [p.team_id] : [];
+}
+
+/**
+ * 「このprofileはteamIdに所属しているか（主チームまたは追加所属）」の判定。
+ * teams.id/profiles.team_idはDB上bigintでAPI経由だと文字列("2")、
+ * デモモード(mockData.ts)では数値(2)になるため、String()化して比較する。
+ * 直接 === で比較すると型が揃わずマッチしない（過去に/team・/boardで
+ * 発生した不具合と同じ原因）。
+ */
+export function isInTeam(p: Profile, teamId: number | string | null | undefined): boolean {
+  if (teamId == null) return false;
+  return teamIdsOf(p).some((t) => String(t) === String(teamId));
 }
 
 /** 追加チーム所属（profile_teams）に1件追加。主チームは変えない */

@@ -3,6 +3,15 @@ import { pool } from '../db.js';
 
 export const assessmentsRouter = Router();
 
+/** リーダーの所属チーム（主チーム or 追加所属）に属するprofile.idの集合 */
+function teamMemberIdsSubquery(paramIndex: number): string {
+  return `(
+    SELECT id FROM profiles WHERE team_id = $${paramIndex}
+    UNION
+    SELECT profile_id FROM profile_teams WHERE team_id = $${paramIndex}
+  )`;
+}
+
 // board: all / leader: own team / member: own only
 assessmentsRouter.get('/assessments', async (req, res) => {
   const p = req.profile!;
@@ -15,9 +24,7 @@ assessmentsRouter.get('/assessments', async (req, res) => {
   if (p.role === 'board') {
     // no additional scoping
   } else if (p.role === 'leader') {
-    clauses.push(
-      `user_id IN (SELECT id FROM profiles WHERE team_id = $${values.length + 1})`,
-    );
+    clauses.push(`user_id IN ${teamMemberIdsSubquery(values.length + 1)}`);
     values.push(p.team_id);
   } else {
     clauses.push(`user_id = $${values.length + 1}`);
@@ -49,7 +56,7 @@ assessmentsRouter.get('/answers', async (req, res) => {
   const values: unknown[] = [assessmentId];
   if (p.role === 'leader') {
     scopeClause = `AND a.id IN (
-      SELECT ass.id FROM assessments ass JOIN profiles pr ON pr.id = ass.user_id WHERE pr.team_id = $2
+      SELECT ass.id FROM assessments ass WHERE ass.user_id IN ${teamMemberIdsSubquery(2)}
     )`;
     values.push(p.team_id);
   } else if (p.role === 'member') {
@@ -113,9 +120,7 @@ assessmentsRouter.delete('/assessments/:id', async (req, res) => {
     await pool.query('DELETE FROM assessments WHERE id = $1', [id]);
   } else if (p.role === 'leader') {
     await pool.query(
-      `DELETE FROM assessments WHERE id = $1 AND user_id IN (
-        SELECT pr.id FROM profiles pr WHERE pr.team_id = $2
-      )`,
+      `DELETE FROM assessments WHERE id = $1 AND user_id IN ${teamMemberIdsSubquery(2)}`,
       [id, p.team_id],
     );
   } else {

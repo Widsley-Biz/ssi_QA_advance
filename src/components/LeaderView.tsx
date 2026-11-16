@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, deleteAssessment } from '../lib/data';
+import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, deleteAssessment, isInTeam } from '../lib/data';
 import { calcRate, calcReachedLevel } from '../lib/score';
 import type { Profile, Team, Course, Skill, Level, Assessment, Answer } from '../types';
 
@@ -79,9 +79,10 @@ export default function LeaderView() {
   function filterByTeam(p: Profile[], teamId: number | 'all', currentUser: Profile): Profile[] {
     const filtered = currentUser.role === 'board'
       ? p.filter(pr => pr.role !== 'retired')
-      : p.filter(pr => pr.team_id === currentUser.team_id && pr.role === 'member');
+      // リーダー自身のチーム所属（主チーム or 追加所属）のメンバーを見る
+      : p.filter(pr => isInTeam(pr, currentUser.team_id) && pr.role === 'member');
     if (teamId === 'all') return filtered;
-    return filtered.filter(pr => pr.team_id === teamId);
+    return filtered.filter(pr => isInTeam(pr, teamId));
   }
 
   // Re-filter when team selection changes
@@ -176,10 +177,7 @@ export default function LeaderView() {
               value={selectedTeamId}
               onChange={(e) => {
                 const v = e.target.value;
-                // team.id/profile.team_idはDB上bigintでAPIからは文字列のまま返る。
-                // Number(v)に変換すると "2" !== 2 で全件フィルタが0件になるため、
-                // 型はnumberのままだが実体は文字列を保持する（既存コードの前提と合わせる）
-                setSelectedTeamId(v === 'all' ? 'all' : (v as unknown as number));
+                setSelectedTeamId(v === 'all' ? 'all' : Number(v));
               }}
               style={{
                 padding: '8px 14px',
