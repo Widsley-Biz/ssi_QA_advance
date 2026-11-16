@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   listExams,
   getAdminExamSchedule,
@@ -6,6 +6,8 @@ import {
   putAdminExamTargets,
   type ExamSummary,
 } from '../lib/exams';
+import { fetchProfiles, fetchTeams } from '../lib/data';
+import type { Profile, Team } from '../types';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
@@ -34,8 +36,11 @@ export default function AdminExamSchedule() {
   const [opensAt, setOpensAt] = useState('');
   const [closesAt, setClosesAt] = useState('');
   const [maxAttempts, setMaxAttempts] = useState('');
-  const [emailsText, setEmailsText] = useState('');
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [originalEmailCount, setOriginalEmailCount] = useState(0);
+  const [memberQuery, setMemberQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -45,11 +50,13 @@ export default function AdminExamSchedule() {
   useEffect(() => {
     (async () => {
       try {
-        const e = await listExams();
+        const [e, p, t] = await Promise.all([listExams(), fetchProfiles(), fetchTeams()]);
         setExams(e);
+        setProfiles(p);
+        setTeams(t);
         if (e.length > 0) setExamId(e[0].id);
       } catch {
-        setError('試験一覧の取得に失敗しました');
+        setError('試験一覧・メンバー一覧の取得に失敗しました');
       } finally {
         setLoading(false);
       }
@@ -67,7 +74,7 @@ export default function AdminExamSchedule() {
         setOpensAt(toInputValue(detail.opens_at));
         setClosesAt(toInputValue(detail.closes_at));
         setMaxAttempts(detail.max_attempts != null ? String(detail.max_attempts) : '');
-        setEmailsText(detail.target_emails.join('\n'));
+        setSelectedEmails(new Set(detail.target_emails));
         setOriginalEmailCount(detail.target_emails.length);
       } catch {
         setError('設定の取得に失敗しました');
@@ -76,6 +83,40 @@ export default function AdminExamSchedule() {
       }
     })();
   }, [examId]);
+
+  const groupedMembers = useMemo(() => {
+    const q = memberQuery.trim().toLowerCase();
+    const filtered = q
+      ? profiles.filter((p) => [p.display_name, p.email].some((v) => v.toLowerCase().includes(q)))
+      : profiles;
+    const map = new Map<string, Profile[]>();
+    for (const p of filtered) {
+      const g = teams.find((t) => t.id === p.team_id)?.name ?? '未所属';
+      if (!map.has(g)) map.set(g, []);
+      map.get(g)!.push(p);
+    }
+    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b, 'ja'));
+  }, [profiles, teams, memberQuery]);
+
+  const toggleMember = (email: string) => {
+    setSelectedEmails((prev) => {
+      const next = new Set(prev);
+      if (next.has(email)) next.delete(email);
+      else next.add(email);
+      return next;
+    });
+  };
+
+  const toggleGroup = (members: Profile[], selectAll: boolean) => {
+    setSelectedEmails((prev) => {
+      const next = new Set(prev);
+      for (const m of members) {
+        if (selectAll) next.add(m.email);
+        else next.delete(m.email);
+      }
+      return next;
+    });
+  };
 
   const handleSaveSchedule = async () => {
     setSaving(true);
@@ -96,10 +137,7 @@ export default function AdminExamSchedule() {
   };
 
   const handleSaveTargets = async () => {
-    const emails = emailsText
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const emails = [...selectedEmails];
 
     if (emails.length === 0 && originalEmailCount > 0) {
       const ok = confirm(
@@ -186,14 +224,49 @@ export default function AdminExamSchedule() {
           </div>
 
           <div style={styles.card}>
-            <h3 style={styles.cardTitle}>対象者（@widsley.com のメールを1行ずつ）</h3>
-            <textarea
-              value={emailsText}
-              onChange={(e) => setEmailsText(e.target.value)}
-              style={styles.textarea}
-              placeholder={'空欄=全員対象\nalice@widsley.com\nbob@widsley.com'}
+            <h3 style={styles.cardTitle}>
+              対象者（{selectedEmails.size === 0 ? '未選択＝全員対象' : `${selectedEmails.size}名選択中`}）
+            </h3>
+            <input
+              value={memberQuery}
+              onChange={(e) => setMemberQuery(e.target.value)}
+              placeholder="名前・メールで検索"
+              style={{ ...styles.input, width: '100%', marginBottom: 12, boxSizing: 'border-box' }}
             />
-            <button style={styles.saveBtn} disabled={saving} onClick={handleSaveTargets}>
+            <div style={styles.memberList}>
+              {groupedMembers.length === 0 ? (
+                <div style={{ color: '#999', fontSize: 13, padding: '8px 0' }}>該当するメンバーがいません</div>
+              ) : (
+                groupedMembers.map(([group, members]) => {
+                  const allSelected = members.every((m) => selectedEmails.has(m.email));
+                  return (
+                    <div key={group} style={styles.memberGroup}>
+                      <div style={styles.memberGroupHead}>
+                        <span style={styles.memberGroupName}>{group}</span>
+                        <button
+                          style={styles.groupToggleBtn}
+                          onClick={() => toggleGroup(members, !allSelected)}
+                        >
+                          {allSelected ? 'チーム全解除' : 'チーム全選択'}
+                        </button>
+                      </div>
+                      {members.map((m) => (
+                        <label key={m.id} style={styles.memberRow}>
+                          <input
+                            type="checkbox"
+                            checked={selectedEmails.has(m.email)}
+                            onChange={() => toggleMember(m.email)}
+                          />
+                          <span style={styles.memberName}>{m.display_name}</span>
+                          <span style={styles.memberEmail}>{m.email}</span>
+                        </label>
+                      ))}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <button style={{ ...styles.saveBtn, marginTop: 14 }} disabled={saving} onClick={handleSaveTargets}>
               {saving ? '保存中...' : '対象者を保存'}
             </button>
           </div>
@@ -216,8 +289,15 @@ const styles: Record<string, React.CSSProperties> = {
   label: { fontSize: 12, fontWeight: 600, color: '#666' },
   select: { padding: '9px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14, background: '#fff' },
   input: { padding: '9px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14 },
-  textarea: { width: '100%', minHeight: 120, padding: '10px 12px', borderRadius: 8, border: '1px solid #ddd', fontSize: 13.5, fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' },
   saveBtn: { marginTop: 4, padding: '9px 22px', border: 'none', borderRadius: 8, background: `linear-gradient(135deg, ${SEA_GREEN}, ${CYAN})`, color: DEEP_BLUE, fontWeight: 700, fontSize: 13.5, cursor: 'pointer' },
+  memberList: { maxHeight: 320, overflowY: 'auto', border: '1px solid #e5eef5', borderRadius: 8, background: '#fff' },
+  memberGroup: { borderBottom: '1px solid #f0f0f0' },
+  memberGroupHead: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#f5f9fb' },
+  memberGroupName: { fontSize: 12.5, fontWeight: 700, color: DEEP_BLUE },
+  groupToggleBtn: { fontSize: 11, color: CYAN, background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, padding: 0 },
+  memberRow: { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', cursor: 'pointer', fontSize: 13 },
+  memberName: { color: DEEP_BLUE, fontWeight: 600 },
+  memberEmail: { color: '#999', fontSize: 12 },
   feedback: { marginTop: 8, fontSize: 13, fontWeight: 600, color: '#0a7d55' },
   error: { marginTop: 8, padding: '10px 14px', borderRadius: 8, background: '#fef2f6', color: MAGENTA, fontSize: 13 },
 };
