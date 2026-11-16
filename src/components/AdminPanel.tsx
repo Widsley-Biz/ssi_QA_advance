@@ -20,7 +20,7 @@ import {
   createCertification,
   updateCertification,
   deleteCertification,
-  teamIdsOf,
+  isInTeam,
   addProfileTeam,
   removeProfileTeam,
 } from '../lib/data';
@@ -314,7 +314,7 @@ function TeamManagement() {
   }, [loadData]);
 
   const membersOfTeam = (teamId: number) =>
-    profiles.filter((p) => teamIdsOf(p).includes(teamId));
+    profiles.filter((p) => isInTeam(p, teamId));
 
   const handleAddMember = async (teamId: number, profileId: string) => {
     if (!profileId) return;
@@ -463,7 +463,8 @@ function TeamManagement() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 16 }}>
         {teams.map((team) => {
           const members = membersOfTeam(team.id);
-          const currentLeader = members.find((m) => m.role === 'leader');
+          // リーダーは「主チーム」で判定する（追加所属で入っている他チームのリーダーを誤認しないように）
+          const currentLeader = members.find((m) => m.role === 'leader' && m.team_id === team.id);
           const isEditing = editingTeamId === team.id;
 
           return (
@@ -569,7 +570,7 @@ function TeamManagement() {
               >
                 <option value="">＋ メンバーを追加（他チーム所属者も可）</option>
                 {profiles
-                  .filter((p) => !teamIdsOf(p).includes(team.id))
+                  .filter((p) => !isInTeam(p, team.id))
                   .map((p) => (
                     <option key={p.id} value={p.id}>{p.display_name}</option>
                   ))}

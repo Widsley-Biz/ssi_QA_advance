@@ -20,7 +20,19 @@ const TEAM_IDS_SUBQUERY = `
   ) AS team_ids
 `;
 
-// board: all / leader: own team / member: self + own team
+/**
+ * 「profiles行が指定チームの一員か（主チーム or 追加所属）」のSQL述語。
+ * $<paramIndex>にteam_idの値を束縛する。profilesを指すFROM句に対して
+ * 相関させて使う（profiles.id/profiles.team_idを直接参照する）。
+ */
+function teamMemberPredicate(paramIndex: number): string {
+  return `(
+    profiles.team_id = $${paramIndex}
+    OR EXISTS (SELECT 1 FROM profile_teams pt WHERE pt.profile_id = profiles.id AND pt.team_id = $${paramIndex})
+  )`;
+}
+
+// board: all / leader: own team(主所属+追加所属の両方) / member: self + own team
 profilesRouter.get('/profiles', async (req, res) => {
   const p = req.profile!;
   const teamId = req.query.team_id as string | undefined;
@@ -28,18 +40,19 @@ profilesRouter.get('/profiles', async (req, res) => {
   let rows: Profile[];
   if (p.role === 'board') {
     rows = teamId
-      ? (await pool.query<Profile>(`SELECT profiles.*, ${TEAM_IDS_SUBQUERY} FROM profiles WHERE role != 'retired' AND team_id = $1`, [teamId])).rows
+      ? (await pool.query<Profile>(`SELECT profiles.*, ${TEAM_IDS_SUBQUERY} FROM profiles WHERE role != 'retired' AND ${teamMemberPredicate(1)}`, [teamId])).rows
       : (await pool.query<Profile>(`SELECT profiles.*, ${TEAM_IDS_SUBQUERY} FROM profiles WHERE role != 'retired'`)).rows;
   } else if (p.role === 'leader') {
-    // leaders only ever see their own team regardless of the requested team_id
+    // leaders see everyone belonging (primary or additional) to the leader's own team,
+    // regardless of the requested team_id
     rows = (await pool.query<Profile>(
-      `SELECT profiles.*, ${TEAM_IDS_SUBQUERY} FROM profiles WHERE role != 'retired' AND team_id = $1`,
+      `SELECT profiles.*, ${TEAM_IDS_SUBQUERY} FROM profiles WHERE role != 'retired' AND ${teamMemberPredicate(1)}`,
       [p.team_id],
     )).rows;
   } else {
-    // member: self + same-team
+    // member: self + same-team (primary or additional)
     rows = (await pool.query<Profile>(
-      `SELECT profiles.*, ${TEAM_IDS_SUBQUERY} FROM profiles WHERE role != 'retired' AND (id = $1 OR team_id = $2)`,
+      `SELECT profiles.*, ${TEAM_IDS_SUBQUERY} FROM profiles WHERE role != 'retired' AND (id = $1 OR ${teamMemberPredicate(2)})`,
       [p.id, p.team_id],
     )).rows;
   }
@@ -60,10 +73,13 @@ profilesRouter.get('/profiles/:id', async (req, res) => {
     return;
   }
 
+  // team_idsはbigint[]なので文字列化して比較する（pgはbigintを文字列で返す）
+  const targetTeamIds = (target.team_ids ?? []).map(String);
+  const viewerTeamId = p.team_id != null ? String(p.team_id) : null;
   const canView =
     p.role === 'board' ||
-    (p.role === 'leader' && target.team_id === p.team_id) ||
-    (p.role === 'member' && (target.id === p.id || (target.team_id !== null && target.team_id === p.team_id)));
+    (p.role === 'leader' && viewerTeamId !== null && targetTeamIds.includes(viewerTeamId)) ||
+    (p.role === 'member' && (target.id === p.id || (viewerTeamId !== null && targetTeamIds.includes(viewerTeamId))));
 
   if (!canView) {
     res.status(404).json(null); // mirrors RLS: unauthorized rows are simply invisible
@@ -93,7 +109,41 @@ profilesRouter.patch('/profiles/:id', async (req, res) => {
   }
   const setClause = fields.map((f, i) => `${f} = $${i + 2}`).join(', ');
   const values = fields.map(f => (updates as Record<string, unknown>)[f]);
-  await pool.query(`UPDATE profiles SET ${setClause} WHERE id = $1`, [targetId, ...values]);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 主チームを変える場合、古い主チームへのprofile_teams上の残留（初回投入時の
+    // バックフィル分）を消しておく。消さないと、ユーザー管理でAからBへ主チームを
+    // 変えても、Aのチーム管理カードに「追加所属」として残り続けてしまう
+    let previousTeamId: string | null = null;
+    if (fields.includes('team_id')) {
+      previousTeamId = (await client.query<{ team_id: string | null }>(
+        'SELECT team_id FROM profiles WHERE id = $1',
+        [targetId],
+      )).rows[0]?.team_id ?? null;
+    }
+
+    await client.query(`UPDATE profiles SET ${setClause} WHERE id = $1`, [targetId, ...values]);
+
+    if (fields.includes('team_id') && previousTeamId !== null) {
+      const newTeamId = (updates as Record<string, unknown>).team_id;
+      if (String(previousTeamId) !== String(newTeamId)) {
+        await client.query(
+          'DELETE FROM profile_teams WHERE profile_id = $1 AND team_id = $2',
+          [targetId, previousTeamId],
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
   res.status(204).end();
 });
 
@@ -131,7 +181,7 @@ profilesRouter.delete('/profiles/:id/teams/:teamId', async (req, res) => {
     [req.params.id],
   )).rows[0];
   if (!prof) return res.status(404).json({ error: 'profile not found' });
-  if (prof.team_id === teamId) {
+  if (prof.team_id !== null && String(prof.team_id) === String(teamId)) {
     return res.status(409).json({ error: '主チームは「ユーザー管理」タブから変更してください' });
   }
 

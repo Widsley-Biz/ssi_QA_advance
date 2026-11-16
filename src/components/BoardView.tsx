@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useAuth } from '../context/AuthContext';
-import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels } from '../lib/data';
+import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, isInTeam } from '../lib/data';
 import { calcRate, calcReachedLevel } from '../lib/score';
 import type { Profile, Team, Course, Skill, Level, Assessment, Answer } from '../types';
 
@@ -94,7 +94,7 @@ export default function BoardView() {
 
   const filteredProfiles = selectedTeam === 'all'
     ? profiles
-    : profiles.filter(p => p.team_id === selectedTeam);
+    : profiles.filter(p => isInTeam(p, selectedTeam));
 
   const activeCourse = courses.find(c => c.id === selectedCourse);
 
@@ -165,7 +165,7 @@ export default function BoardView() {
 
   // Team average rates for selected course
   const teamAvgData = teams.map((team) => {
-    const members = profiles.filter(p => p.team_id === team.id);
+    const members = profiles.filter(p => isInTeam(p, team.id));
     const courseSkills = skills.filter(s => s.course_id === selectedCourse);
     const rates = members.map(m => {
       const latestSubmitted = assessments
@@ -200,10 +200,7 @@ export default function BoardView() {
             <label style={styles.filterLabel}>チーム:</label>
             <select
               value={selectedTeam}
-              // team.id/profile.team_idはDB上bigintでAPIからは文字列のまま返る。
-              // Number(...)に変換すると "2" !== 2 で全件フィルタが0件になるため、
-              // 型はnumberのままだが実体は文字列を保持する（既存コードの前提と合わせる）
-              onChange={(e) => setSelectedTeam(e.target.value === 'all' ? 'all' : (e.target.value as unknown as number))}
+              onChange={(e) => setSelectedTeam(e.target.value === 'all' ? 'all' : Number(e.target.value))}
               style={styles.select}
             >
               <option value="all">全チーム</option>

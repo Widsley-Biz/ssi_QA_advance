@@ -21,7 +21,12 @@ function scopeAttempts(role: string, id: string, teamId: number | null): Sel {
   if (role === 'board') return { clause: '1=1', values: [] };
   if (role === 'leader') {
     return {
-      clause: 'a.user_id IN (SELECT id FROM profiles WHERE team_id = $1)',
+      // 主チーム or 追加所属(profile_teams)のどちらかで自チームのメンバーとみなす
+      clause: `a.user_id IN (
+        SELECT id FROM profiles WHERE team_id = $1
+        UNION
+        SELECT profile_id FROM profile_teams WHERE team_id = $1
+      )`,
       values: [teamId],
     };
   }
@@ -413,7 +418,9 @@ examsRouter.get('/exams/attempts/:attemptId', async (req, res) => {
   if (p.role === 'board') allowed = true;
   else if (p.role === 'leader') {
     const sameTeam = await pool.query(
-      'SELECT 1 FROM profiles WHERE id = $1 AND team_id = $2',
+      `SELECT 1 FROM profiles WHERE id = $1 AND (
+         team_id = $2 OR id IN (SELECT profile_id FROM profile_teams WHERE team_id = $2)
+       )`,
       [attempt.user_id, p.team_id],
     );
     allowed = (sameTeam.rowCount ?? 0) > 0;
