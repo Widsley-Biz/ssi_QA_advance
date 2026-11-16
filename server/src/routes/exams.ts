@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
+import { requireRole, type Profile } from '../auth.js';
 
 export const examsRouter = Router();
 
@@ -27,6 +28,37 @@ function scopeAttempts(role: string, id: string, teamId: number | null): Sel {
   return { clause: 'a.user_id = $1', values: [id] };
 }
 
+/**
+ * 試験の受験可否判定。board は常にtrue（下見・管理用）。
+ * member/leader は is_published・開始/終了日時・対象者(exam_targets)を見る。
+ * exam_targets に1件も行が無い試験は全員対象（既存の自習試験と同じ動作）。
+ */
+async function checkExamAccess(
+  exam: { id: string; is_published: boolean; opens_at: Date | string | null; closes_at: Date | string | null },
+  profile: Profile,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (profile.role === 'board') return { ok: true };
+  if (!exam.is_published) return { ok: false, reason: '非公開の試験です' };
+
+  const now = new Date();
+  if (exam.opens_at && now < new Date(exam.opens_at)) return { ok: false, reason: 'この試験はまだ開始していません' };
+  if (exam.closes_at && now > new Date(exam.closes_at)) return { ok: false, reason: 'この試験は受付を終了しました' };
+
+  const { rows } = await pool.query(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE email = $2)::int AS mine
+       FROM exam_targets WHERE exam_id = $1`,
+    [exam.id, profile.email],
+  );
+  if (rows[0].total > 0 && rows[0].mine === 0) return { ok: false, reason: 'この試験の対象者ではありません' };
+  return { ok: true };
+}
+
+/** 正式試験（closes_at設定あり）は終了まで採点結果を非公開にする */
+function isRevealed(exam: { closes_at: Date | string | null }): boolean {
+  return !exam.closes_at || new Date(exam.closes_at) <= new Date();
+}
+
 /** 試験一覧。自分の受験回数と最高得点を添える */
 examsRouter.get('/exams', async (req, res) => {
   const p = req.profile!;
@@ -35,6 +67,7 @@ examsRouter.get('/exams', async (req, res) => {
   const { rows } = await pool.query(
     `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
             e.sort_order, e.is_published, e.kind,
+            e.opens_at, e.closes_at, e.max_attempts, e.materials,
             (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)::int      AS question_count,
             (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id)::int AS total_points,
             (SELECT count(*) FROM exam_attempts a
@@ -47,9 +80,17 @@ examsRouter.get('/exams', async (req, res) => {
             (SELECT max(s.submitted_at) FROM exam_practical_submissions s
               WHERE s.exam_id = e.id AND s.user_id = $1)      AS my_practical_at
        FROM exams e
-      WHERE e.is_published OR $2 = 'board'
+      WHERE $2 = 'board' OR (
+              e.is_published
+          AND (e.opens_at  IS NULL OR e.opens_at  <= now())
+          AND (e.closes_at IS NULL OR e.closes_at >= now())
+          AND (
+                NOT EXISTS (SELECT 1 FROM exam_targets t WHERE t.exam_id = e.id)
+             OR EXISTS (SELECT 1 FROM exam_targets t WHERE t.exam_id = e.id AND t.email = $3)
+              )
+            )
       ORDER BY e.group_name, e.sort_order, e.id`,
-    [p.id, p.role],
+    [p.id, p.role, p.email],
   );
   res.json(rows);
 });
@@ -63,12 +104,13 @@ examsRouter.get('/exams/:examId/practical', async (req, res) => {
   if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
 
   const exam = (await pool.query(
-    `SELECT id, name, description, group_name, kind, guide, is_published
+    `SELECT id, name, description, group_name, kind, guide, is_published, opens_at, closes_at
        FROM exams WHERE id = $1`,
     [req.params.examId],
   )).rows[0];
   if (!exam) return res.status(404).json({ error: 'exam not found' });
-  if (!exam.is_published && p.role !== 'board') return res.status(403).json({ error: 'not permitted' });
+  const access = await checkExamAccess(exam, p);
+  if (!access.ok) return res.status(403).json({ error: access.reason });
   if (exam.kind !== 'practical') return res.status(409).json({ error: 'not a practical exam' });
 
   const { rows: mine } = await pool.query(
@@ -88,11 +130,12 @@ examsRouter.post('/exams/:examId/practical/submissions', async (req, res) => {
   if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
 
   const exam = (await pool.query(
-    `SELECT id, kind, is_published FROM exams WHERE id = $1`,
+    `SELECT id, kind, is_published, opens_at, closes_at FROM exams WHERE id = $1`,
     [req.params.examId],
   )).rows[0];
   if (!exam) return res.status(404).json({ error: 'exam not found' });
-  if (!exam.is_published && p.role !== 'board') return res.status(403).json({ error: 'not permitted' });
+  const access = await checkExamAccess(exam, p);
+  if (!access.ok) return res.status(403).json({ error: access.reason });
   if (exam.kind !== 'practical') return res.status(409).json({ error: 'not a practical exam' });
 
   // 貼り間違いをそのまま保存しないよう、GitHubのPR URLだけ通す（空欄は許可）
@@ -141,11 +184,21 @@ examsRouter.get('/exams/attempts', async (req, res) => {
     values.push(userId);
     extra = ` AND a.user_id = $${values.length}`;
   }
+  values.push(p.role);
+  const roleParam = `$${values.length}`;
 
+  // 正式試験（closes_at設定あり）は終了まで本人・リーダーに点数を見せない（boardのみ常に見える）。
+  // ここで隠さないと、結果画面は非表示にしていても一覧（受験履歴）から漏れてしまう
   const { rows } = await pool.query(
     `SELECT a.id, a.exam_id, e.name AS exam_name, a.user_id, pr.display_name,
             a.status, a.started_at, a.submitted_at,
-            a.earned_points, a.total_points, a.passed
+            CASE WHEN ${roleParam} = 'board' OR e.closes_at IS NULL OR e.closes_at <= now()
+                 THEN a.earned_points END AS earned_points,
+            CASE WHEN ${roleParam} = 'board' OR e.closes_at IS NULL OR e.closes_at <= now()
+                 THEN a.total_points END AS total_points,
+            CASE WHEN ${roleParam} = 'board' OR e.closes_at IS NULL OR e.closes_at <= now()
+                 THEN a.passed END AS passed,
+            (${roleParam} <> 'board' AND e.closes_at IS NOT NULL AND e.closes_at > now()) AS pending_reveal
        FROM exam_attempts a
        JOIN exams e ON e.id = a.exam_id
        JOIN profiles pr ON pr.id = a.user_id
@@ -165,14 +218,25 @@ examsRouter.post('/exams/:examId/start', async (req, res) => {
 
   const exam = (
     await pool.query(
-      `SELECT id, name, description, pass_score, time_limit_min, shuffle_questions, is_published
+      `SELECT id, name, description, pass_score, time_limit_min, shuffle_questions,
+              is_published, opens_at, closes_at, max_attempts
          FROM exams WHERE id = $1`,
       [examId],
     )
   ).rows[0];
   if (!exam) return res.status(404).json({ error: 'exam not found' });
-  if (!exam.is_published && p.role !== 'board') {
-    return res.status(403).json({ error: 'exam not published' });
+  const access = await checkExamAccess(exam, p);
+  if (!access.ok) return res.status(403).json({ error: access.reason });
+
+  if (exam.max_attempts != null && p.role !== 'board') {
+    const { rows: cnt } = await pool.query(
+      `SELECT count(*)::int AS n FROM exam_attempts
+        WHERE user_id = $1 AND exam_id = $2 AND status = 'submitted'`,
+      [p.id, examId],
+    );
+    if (cnt[0].n >= exam.max_attempts) {
+      return res.status(409).json({ error: '受験回数の上限に達しています' });
+    }
   }
 
   const client = await pool.connect();
@@ -317,6 +381,16 @@ examsRouter.post('/exams/attempts/:attemptId/submit', async (req, res) => {
     );
 
     await client.query('COMMIT');
+    // 正式試験（closes_at設定あり）は終了まで本人に採点結果・解説を見せない。
+    // 採点自体とexam_attempt_answersへの保存はここまでで完了済みなので、絞るのはレスポンスだけ
+    if (p.role !== 'board' && !isRevealed(exam)) {
+      return res.json({
+        attempt_id: attemptId,
+        exam: { id: exam.id, name: exam.name },
+        status: 'submitted',
+        reveal_at: exam.closes_at,
+      });
+    }
     res.json(await buildResult(attemptId));
   } catch (e) {
     await client.query('ROLLBACK');
@@ -347,7 +421,132 @@ examsRouter.get('/exams/attempts/:attemptId', async (req, res) => {
   if (!allowed) return res.status(403).json({ error: 'not permitted' });
   if (attempt.status !== 'submitted') return res.status(409).json({ error: 'not submitted yet' });
 
+  const exam = (await pool.query('SELECT id, name, closes_at FROM exams WHERE id = $1', [attempt.exam_id])).rows[0];
+  if (p.role !== 'board' && !isRevealed(exam)) {
+    return res.json({
+      attempt_id: attemptId,
+      exam: { id: exam.id, name: exam.name },
+      status: 'submitted',
+      reveal_at: exam.closes_at,
+    });
+  }
   res.json(await buildResult(attemptId));
+});
+
+/**
+ * 管理者向けレポート：メンバー×試験のマトリクス。
+ * ベストスコア（同点なら最新提出）を1セルとして返す。対象者限定の試験で
+ * 対象外のメンバーは excluded=true（結果は返さない）。退職(retired)は除外。
+ */
+examsRouter.get('/exams/report', requireRole('board'), async (_req, res) => {
+  const { rows } = await pool.query(
+    `WITH best_attempts AS (
+       SELECT DISTINCT ON (a.user_id, a.exam_id)
+              a.user_id, a.exam_id, a.id AS attempt_id,
+              a.earned_points, a.total_points, a.passed, a.submitted_at
+         FROM exam_attempts a
+        WHERE a.status = 'submitted'
+        ORDER BY a.user_id, a.exam_id, a.earned_points DESC, a.submitted_at DESC
+     )
+     SELECT p.id AS user_id, p.display_name, p.team_id,
+            e.id AS exam_id, e.name AS exam_name, e.group_name, e.sort_order,
+            COALESCE(t.total, 0) > 0 AND COALESCE(t.mine, 0) = 0 AS excluded,
+            ba.attempt_id, ba.earned_points, ba.total_points, ba.passed, ba.submitted_at
+       FROM profiles p
+      CROSS JOIN exams e
+       LEFT JOIN best_attempts ba ON ba.user_id = p.id AND ba.exam_id = e.id
+       LEFT JOIN LATERAL (
+             SELECT count(*)::int AS total,
+                    count(*) FILTER (WHERE email = p.email)::int AS mine
+               FROM exam_targets WHERE exam_id = e.id
+            ) t ON true
+      WHERE p.role <> 'retired'
+      ORDER BY p.display_name, e.group_name, e.sort_order`,
+  );
+  res.json(rows);
+});
+
+/** 管理者向け：試験の日程・対象者設定の現在値（管理画面のプレフィル用） */
+examsRouter.get('/admin/exams/:examId', requireRole('board'), async (req, res) => {
+  const examId = req.params.examId;
+  const exam = (
+    await pool.query(
+      `SELECT id, name, opens_at, closes_at, max_attempts, materials FROM exams WHERE id = $1`,
+      [examId],
+    )
+  ).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  const { rows: targets } = await pool.query(
+    'SELECT email FROM exam_targets WHERE exam_id = $1 ORDER BY email',
+    [examId],
+  );
+  res.json({ ...exam, target_emails: targets.map((t) => t.email) });
+});
+
+/** 管理者向け：試験の開始/終了日時・受験回数上限を設定 */
+examsRouter.put('/admin/exams/:examId/schedule', requireRole('board'), async (req, res) => {
+  const examId = req.params.examId;
+  const { opens_at, closes_at, max_attempts } = (req.body ?? {}) as {
+    opens_at?: string | null;
+    closes_at?: string | null;
+    max_attempts?: number | null;
+  };
+
+  if (max_attempts != null && (!Number.isInteger(max_attempts) || max_attempts <= 0)) {
+    return res.status(400).json({ error: 'max_attempts must be a positive integer or null' });
+  }
+  const opensAt = opens_at ? new Date(opens_at) : null;
+  const closesAt = closes_at ? new Date(closes_at) : null;
+  if (opensAt && Number.isNaN(opensAt.getTime())) return res.status(400).json({ error: 'bad opens_at' });
+  if (closesAt && Number.isNaN(closesAt.getTime())) return res.status(400).json({ error: 'bad closes_at' });
+  if (opensAt && closesAt && opensAt > closesAt) {
+    return res.status(400).json({ error: 'opens_at must be before closes_at' });
+  }
+
+  const { rows, rowCount } = await pool.query(
+    `UPDATE exams SET opens_at = $2, closes_at = $3, max_attempts = $4
+      WHERE id = $1
+      RETURNING id, opens_at, closes_at, max_attempts`,
+    [examId, opensAt, closesAt, max_attempts ?? null],
+  );
+  if (!rowCount) return res.status(404).json({ error: 'exam not found' });
+  res.json(rows[0]);
+});
+
+/** 管理者向け：試験の対象者（email）を全置換。空配列=対象者指定なし=全員公開に戻る */
+examsRouter.put('/admin/exams/:examId/targets', requireRole('board'), async (req, res) => {
+  const examId = req.params.examId;
+  const emailsRaw = (req.body?.emails ?? []) as unknown;
+  if (!Array.isArray(emailsRaw)) return res.status(400).json({ error: 'emails must be an array' });
+
+  const emails = [...new Set(emailsRaw.map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
+  for (const email of emails) {
+    if (!email.endsWith('@widsley.com')) {
+      return res.status(400).json({ error: `@widsley.com 以外のメールは指定できません: ${email}` });
+    }
+  }
+
+  const exam = (await pool.query('SELECT id FROM exams WHERE id = $1', [examId])).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM exam_targets WHERE exam_id = $1', [examId]);
+    for (const email of emails) {
+      await client.query(
+        'INSERT INTO exam_targets (exam_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [examId, email],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+  res.json({ exam_id: examId, emails });
 });
 
 async function buildResult(attemptId: number) {

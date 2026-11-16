@@ -22,6 +22,8 @@ import {
   deleteCertification,
 } from '../lib/data';
 import type { Invitation, CertificationRecord } from '../lib/data';
+import AdminExamReport from './AdminExamReport';
+import AdminExamSchedule from './AdminExamSchedule';
 
 // ── Brand colors ──
 const DEEP_BLUE = '#03202F';
@@ -1241,6 +1243,8 @@ export default function AdminPanel() {
     { path: '/admin/teams', label: 'チーム管理' },
     { path: '/admin/certs', label: '資格管理' },
     { path: '/admin/master', label: 'マスタ管理' },
+    { path: '/admin/exam-report', label: '試験レポート' },
+    { path: '/admin/exam-schedule', label: '試験日程' },
   ];
 
   const activeTab = tabs.find((t) => location.pathname.startsWith(t.path))?.path ?? '/admin/users';
@@ -1274,6 +1278,8 @@ export default function AdminPanel() {
             <Route path="teams" element={<TeamManagement />} />
             <Route path="certs" element={<CertificationManagement />} />
             <Route path="master" element={<MasterData />} />
+            <Route path="exam-report" element={<AdminExamReport />} />
+            <Route path="exam-schedule" element={<AdminExamSchedule />} />
             <Route path="" element={<Navigate to="/admin/invite" replace />} />
             <Route path="*" element={<Navigate to="/admin/invite" replace />} />
           </Routes>

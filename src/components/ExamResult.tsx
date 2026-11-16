@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getAttemptResult, type ExamResult as Result } from '../lib/exams';
+import { getAttemptResult, isExamResult, type ExamResultOrPending } from '../lib/exams';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
@@ -12,7 +12,7 @@ const GRADIENT = 'linear-gradient(135deg, #50DAB0, #3DB7E4)';
 export default function ExamResult() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const navigate = useNavigate();
-  const [result, setResult] = useState<Result | null>(null);
+  const [result, setResult] = useState<ExamResultOrPending | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openAll, setOpenAll] = useState(false);
@@ -38,6 +38,24 @@ export default function ExamResult() {
     </div>
   );
   if (!result) return null;
+
+  if (!isExamResult(result)) {
+    const revealAt = new Date(result.reveal_at).toLocaleString('ja-JP');
+    return (
+      <div style={styles.page}>
+        <div style={{ ...styles.hero, background: '#EEF2F5' }}>
+          <div style={styles.examName}>{result.exam.name}</div>
+          <div style={{ ...styles.verdict, color: '#666', fontSize: 20 }}>提出済み</div>
+          <div style={styles.heroMeta}>
+            正式試験のため、採点結果と解説は試験終了後（{revealAt}）に表示されます。
+          </div>
+        </div>
+        <div style={styles.actions}>
+          <button style={styles.listBtn} onClick={() => navigate('/exams')}>模擬試験一覧</button>
+        </div>
+      </div>
+    );
+  }
 
   const pct = result.total_points ? Math.round((result.earned_points / result.total_points) * 100) : 0;
   const correctCount = result.results.filter((r) => r.is_correct).length;
