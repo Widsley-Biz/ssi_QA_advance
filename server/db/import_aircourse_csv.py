@@ -43,7 +43,11 @@ import sys
 from pathlib import Path
 
 # 残す HTML タグ。AirCourse のエディタが入れる style / span は落とす
-KEEP_TAGS = {"p", "br", "pre", "code", "strong", "em", "b", "i", "ul", "ol", "li"}
+# table系はJSTQB問題の決定表・見積り表のような構造化された設問に必要
+KEEP_TAGS = {
+    "p", "br", "pre", "code", "strong", "em", "b", "i", "ul", "ol", "li",
+    "table", "thead", "tbody", "tr", "td", "th",
+}
 
 
 def strip_styling(fragment: str) -> str:
@@ -115,6 +119,24 @@ def parse_choices(question_text: str, expected: int) -> tuple[str, dict[str, str
     raise ValueError(f"選択肢を{expected}件抽出できませんでした")
 
 
+def choices_from_answer_text(answer_text: str, correct_answer: str) -> tuple[dict[str, str], list[str]]:
+    """選択肢がquestion_text内に埋め込まれていない形式（JSTQB系の出力）向け。
+
+    この形式ではm_answer_textに選択肢の本文がそのまま ; 区切りで入っており、
+    correct_answerも（A/B/C/Dのキーではなく）選択肢本文の完全一致で入っている。
+    """
+    options = [html.unescape(o).strip() for o in answer_text.split(";") if o.strip()]
+    choices = {chr(ord("a") + i): opt for i, opt in enumerate(options)}
+
+    correct_keys: list[str] = []
+    for c in (html.unescape(x).strip() for x in correct_answer.split(";") if x.strip()):
+        matches = [k for k, v in choices.items() if v == c]
+        if not matches:
+            raise ValueError(f"正解 {c!r} が選択肢 {list(choices.values())} と一致しません")
+        correct_keys.append(matches[0])
+    return choices, correct_keys
+
+
 def sql_str(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
@@ -128,12 +150,19 @@ def convert(path: Path) -> list[dict]:
     out: list[dict] = []
     for i, row in enumerate(rows, start=1):
         expected = int(row["m_answer_number"])
-        question, choices = parse_choices(row["question_text"], expected)
-        correct = [k.strip().lower() for k in row["correct_answer"].split(";") if k.strip()]
-        missing = [k for k in correct if k not in choices]
-        if missing:
-            raise ValueError(f"{row['question_name']}: 正解キー {missing} が選択肢に無い")
+        try:
+            question, choices = parse_choices(row["question_text"], expected)
+            correct = [k.strip().lower() for k in row["correct_answer"].split(";") if k.strip()]
+            missing = [k for k in correct if k not in choices]
+            if missing:
+                raise ValueError(f"正解キー {missing} が選択肢に無い")
+        except ValueError:
+            # 選択肢がquestion_text内に埋め込まれていない形式（JSTQB系）にフォールバック
+            question = strip_styling(row["question_text"]).strip()
+            choices, correct = choices_from_answer_text(row["m_answer_text"], row["correct_answer"])
         cat = re.search(r"【(.+?)】", row["question_name"])
+        # score_weight_pointが0（未設定）のCSVは均等配点（5点）を既定にする
+        points = int(row["score_weight_point"]) or 5
         out.append(
             {
                 "no": i,
@@ -145,26 +174,31 @@ def convert(path: Path) -> list[dict]:
                 "allow_multiple": row["m_allow_multiple_answer"].strip().upper() == "T"
                 or len(correct) > 1,
                 "explanation": strip_styling(row["feedback_text"]).strip(),
-                "points": int(row["score_weight_point"]),
+                "points": points,
             }
         )
     return out
 
 
 def emit_sql(exam_id: str, exam_name: str, pass_score: int, questions: list[dict],
-             sort_order: int) -> str:
+             sort_order: int, group_name: str = "", time_limit_min: int | None = None,
+             unlimited_retake: bool = True) -> str:
     total = sum(q["points"] for q in questions)
+    retake_note = "何度でも受け直せます。" if unlimited_retake else "受験回数・対象者は別途制限されます。"
+    time_note = f"制限時間{time_limit_min}分。" if time_limit_min else ""
     lines = [
         f"-- {exam_name}（{len(questions)}問 / 満点{total}点 / 合格ライン{pass_score}点）",
         "DELETE FROM exam_questions WHERE exam_id = " + sql_str(exam_id) + ";",
-        "INSERT INTO exams (id, name, description, pass_score, time_limit_min,",
+        "INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,",
         "                   shuffle_questions, is_published, sort_order) VALUES",
         f"  ({sql_str(exam_id)}, {sql_str(exam_name)},",
-        f"   {sql_str(f'全{len(questions)}問・満点{total}点。合格ライン{pass_score}点。何度でも受け直せます。')},",
-        f"   {pass_score}, NULL, true, true, {sort_order})",
+        f"   {sql_str(f'全{len(questions)}問・満点{total}点。合格ライン{pass_score}点。{time_note}{retake_note}')},",
+        f"   {sql_str(group_name)},",
+        f"   {pass_score}, {time_limit_min if time_limit_min else 'NULL'}, true, true, {sort_order})",
         "ON CONFLICT (id) DO UPDATE SET",
         "  name = EXCLUDED.name, description = EXCLUDED.description,",
-        "  pass_score = EXCLUDED.pass_score, is_published = EXCLUDED.is_published,",
+        "  group_name = EXCLUDED.group_name, pass_score = EXCLUDED.pass_score,",
+        "  time_limit_min = EXCLUDED.time_limit_min, is_published = EXCLUDED.is_published,",
         "  sort_order = EXCLUDED.sort_order;",
         "",
         "INSERT INTO exam_questions",
@@ -199,16 +233,22 @@ def main() -> int:
     ap.add_argument("--exam-id", required=True, help="複数CSVのときは接尾辞 -a -b ... が付く")
     ap.add_argument("--exam-name", required=True)
     ap.add_argument("--pass-score", type=int, required=True)
+    ap.add_argument("--group-name", default="", help="一覧でまとめるジャンル名（例: 社内認定試験）")
+    ap.add_argument("--time-limit-min", type=int, default=None, help="制限時間（分）。省略時は制限なし")
+    ap.add_argument(
+        "--limited-retake", action="store_true",
+        help="正式試験向け：説明文を「何度でも受け直せます」ではなく「回数・対象者は別途制限」にする",
+    )
     ap.add_argument("--out", type=Path)
     ap.add_argument("--json-out", type=Path)
     args = ap.parse_args()
 
     chunks: list[str] = [
         "-- ============================================================",
-        "-- 011_exam_playwright.sql  –  Playwright模擬筆記の設問",
+        f"-- {args.exam_name} の設問",
         "-- ============================================================",
         "-- AirCourse からエクスポートしたCSVを",
-        "--   supabase/tools/import_aircourse_csv.py",
+        "--   server/db/import_aircourse_csv.py",
         "-- で変換したもの。手で編集せず、CSVを直してから再生成すること。",
         "-- ============================================================",
         "",
@@ -227,7 +267,11 @@ def main() -> int:
             return 1
         total = sum(q["points"] for q in questions)
         print(f"OK {path.name} → {exam_id}: {len(questions)}問 / {total}点")
-        chunks.append(emit_sql(exam_id, exam_name, args.pass_score, questions, idx + 1))
+        chunks.append(emit_sql(
+            exam_id, exam_name, args.pass_score, questions, idx + 1,
+            group_name=args.group_name, time_limit_min=args.time_limit_min,
+            unlimited_retake=not args.limited_retake,
+        ))
         all_json[exam_id] = {"name": exam_name, "total_points": total, "questions": questions}
 
     sql = "\n".join(chunks)
