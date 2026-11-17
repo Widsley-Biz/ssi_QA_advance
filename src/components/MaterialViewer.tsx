@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   listExams,
@@ -14,6 +14,42 @@ const MAGENTA = '#E21776';
 
 function pad3(n: number): string {
   return String(n).padStart(3, '0');
+}
+
+function MaximizeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+      <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 6 6 18" />
+      <path d="m6 6 12 12" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
 }
 
 /**
@@ -35,6 +71,9 @@ export default function MaterialViewer() {
   const [jumpInput, setJumpInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const pageRef = useRef(1);
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!examId || !materialId) return;
@@ -70,6 +109,27 @@ export default function MaterialViewer() {
     })();
   }, [examId, materialId]);
 
+  useEffect(() => {
+    pageRef.current = page;
+  }, [page]);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setIsFullscreen(false);
+      else if (e.key === 'ArrowLeft') visitPage(pageRef.current - 1);
+      else if (e.key === 'ArrowRight') visitPage(pageRef.current + 1);
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFullscreen]);
+
   // ページ遷移のたびに呼ぶ（デバウンスしない。タブを閉じる直前の遷移を失わないため）
   function visitPage(n: number) {
     if (!material || !examId || !materialId) return;
@@ -89,6 +149,22 @@ export default function MaterialViewer() {
     const n = Number(jumpInput);
     if (Number.isInteger(n)) goTo(n);
     setJumpInput('');
+  }
+
+  function handleTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    goTo(dx < 0 ? page + 1 : page - 1);
   }
 
   if (loading) return <div style={styles.page}>読み込み中…</div>;
@@ -127,7 +203,41 @@ export default function MaterialViewer() {
           alt={`${material.label} ${page}ページ目`}
           style={styles.img}
         />
+        <button style={styles.maximizeBtn} onClick={() => setIsFullscreen(true)} aria-label="全画面表示">
+          <MaximizeIcon />
+        </button>
       </div>
+
+      {isFullscreen && (
+        <div style={styles.fsOverlay} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          <img
+            key={`fs-${page}`}
+            src={`${material.url}/${pad3(page)}.jpg`}
+            alt={`${material.label} ${page}ページ目`}
+            style={styles.fsImg}
+          />
+          <button style={styles.fsClose} onClick={() => setIsFullscreen(false)} aria-label="閉じる">
+            <CloseIcon />
+          </button>
+          <div style={styles.fsPageIndicator}>{page} / {totalPages}</div>
+          <button
+            style={{ ...styles.fsNavBtn, ...styles.fsNavBtnLeft, opacity: page <= 1 ? 0.3 : 1 }}
+            onClick={() => goTo(page - 1)}
+            disabled={page <= 1}
+            aria-label="前へ"
+          >
+            <ChevronLeftIcon />
+          </button>
+          <button
+            style={{ ...styles.fsNavBtn, ...styles.fsNavBtnRight, opacity: page >= totalPages ? 0.3 : 1 }}
+            onClick={() => goTo(page + 1)}
+            disabled={page >= totalPages}
+            aria-label="次へ"
+          >
+            <ChevronRightIcon />
+          </button>
+        </div>
+      )}
 
       <div style={styles.navRow}>
         <button style={styles.navBtn} onClick={() => goTo(page - 1)} disabled={page <= 1}>
@@ -167,8 +277,36 @@ const styles: Record<string, React.CSSProperties> = {
   progressBarInner: { height: '100%', borderRadius: 5, background: `linear-gradient(90deg, ${SEA_GREEN}, ${CYAN})`, transition: 'width 0.2s' },
   progressText: { flex: 'none', fontSize: 12.5, color: '#555', fontVariantNumeric: 'tabular-nums' },
 
-  viewerWrap: { marginTop: 18, textAlign: 'center', background: '#F5F9FB', borderRadius: 10, padding: 12 },
+  viewerWrap: { marginTop: 18, textAlign: 'center', background: '#F5F9FB', borderRadius: 10, padding: 12, position: 'relative' },
   img: { maxWidth: '100%', borderRadius: 6, boxShadow: '0 2px 10px rgba(3,32,47,0.12)' },
+  maximizeBtn: {
+    position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: 8,
+    border: 'none', background: 'rgba(3,32,47,0.72)', color: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+  },
+  fsOverlay: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#000', zIndex: 1000,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none',
+  },
+  fsImg: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' },
+  fsClose: {
+    position: 'fixed', top: 16, right: 16, zIndex: 1001, width: 40, height: 40, borderRadius: 20,
+    border: 'none', background: 'rgba(255,255,255,0.14)', color: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+  },
+  fsPageIndicator: {
+    position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 1001,
+    color: '#fff', fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.14)',
+    padding: '4px 12px', borderRadius: 12, fontVariantNumeric: 'tabular-nums',
+  },
+  fsNavBtn: {
+    position: 'fixed', top: '50%', transform: 'translateY(-50%)', zIndex: 1001,
+    width: 48, height: 48, borderRadius: 24, border: 'none',
+    background: 'rgba(255,255,255,0.14)', color: '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+  },
+  fsNavBtnLeft: { left: 12 },
+  fsNavBtnRight: { right: 12 },
 
   navRow: { marginTop: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' },
   navBtn: { padding: '9px 18px', border: `1px solid ${CYAN}`, borderRadius: 8, background: '#fff', color: DEEP_BLUE, fontSize: 14, fontWeight: 700, cursor: 'pointer' },
