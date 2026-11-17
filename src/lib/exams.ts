@@ -51,9 +51,30 @@ export interface ExamSummary {
   opens_at: string | null;
   closes_at: string | null;
   max_attempts: number | null;
-  materials: { label: string; url: string; note?: string }[] | null;
+  materials: ExamMaterial[] | null;
   /** 対象者(exam_targets)の設定件数。0件=全員対象 */
   target_count: number;
+}
+
+/**
+ * スライド等の参考資料。idとpagesが両方揃っているものだけ、
+ * アプリ内ビューア(進捗管理つき)の対象になる。無ければ旧来通り外部リンクとして扱う。
+ */
+export interface ExamMaterial {
+  id?: string;
+  label: string;
+  url: string;
+  note?: string;
+  pages?: number;
+}
+
+/** 教材1件ぶんの視聴進捗 */
+export interface MaterialProgress {
+  exam_id: string;
+  material_id: string;
+  viewed_pages: number[];
+  last_page: number;
+  updated_at: string;
 }
 
 /** 実技の案内。文言とリンクはサーバー（DBのguide列）が持っている */
@@ -187,6 +208,28 @@ export interface ExamReportCell {
 }
 export const getExamReport = () => api<ExamReportCell[]>('/exams/report');
 
+/** 自分の教材進捗を全件取得。一覧の%バッジとビューアの再開位置の両方で使う */
+export const getMyMaterialProgress = () =>
+  api<MaterialProgress[]>('/exams/materials/progress/mine');
+
+export const saveMaterialProgress = (examId: string, materialId: string, page: number) =>
+  api<{ ok: true }>(
+    `/exams/${encodeURIComponent(examId)}/materials/${encodeURIComponent(materialId)}/progress`,
+    { method: 'PUT', body: JSON.stringify({ page }) },
+  );
+
+/** 管理者向け：対象試験の全メンバー×教材の進捗（未着手者もmaterial_id=nullの行で含まれる） */
+export interface AdminMaterialProgressRow {
+  user_id: string;
+  display_name: string;
+  material_id: string | null;
+  viewed_pages: number[] | null;
+  last_page: number | null;
+  updated_at: string | null;
+}
+export const getExamMaterialProgress = (examId: string) =>
+  api<AdminMaterialProgressRow[]>(`/exams/${encodeURIComponent(examId)}/materials/progress`);
+
 export interface AdminExamSchedule {
   id: string;
   name: string;
@@ -195,7 +238,7 @@ export interface AdminExamSchedule {
   opens_at: string | null;
   closes_at: string | null;
   max_attempts: number | null;
-  materials: { label: string; url: string; note?: string }[] | null;
+  materials: ExamMaterial[] | null;
   target_emails: string[];
 }
 export const getAdminExamSchedule = (examId: string) =>

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { listExams, listAttempts, type ExamSummary, type AttemptSummary } from '../lib/exams';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  listExams,
+  listAttempts,
+  getMyMaterialProgress,
+  type ExamSummary,
+  type AttemptSummary,
+  type MaterialProgress,
+} from '../lib/exams';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
@@ -15,6 +22,7 @@ export default function ExamList() {
   const navigate = useNavigate();
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [attempts, setAttempts] = useState<AttemptSummary[]>([]);
+  const [materialProgress, setMaterialProgress] = useState<MaterialProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -23,9 +31,10 @@ export default function ExamList() {
   useEffect(() => {
     (async () => {
       try {
-        const [e, a] = await Promise.all([listExams(), listAttempts()]);
+        const [e, a, mp] = await Promise.all([listExams(), listAttempts(), getMyMaterialProgress()]);
         setExams(e);
         setAttempts(a);
+        setMaterialProgress(mp);
       } catch (err) {
         setError(err instanceof Error ? err.message : '読み込みに失敗しました');
       } finally {
@@ -33,6 +42,13 @@ export default function ExamList() {
       }
     })();
   }, []);
+
+  /** 教材1件ぶんの進捗%（未閲覧=0）。id/pagesが無い教材はnull(=進捗管理の対象外) */
+  function materialPercent(examId: string, materialId: string | undefined, pages: number | undefined) {
+    if (!materialId || !pages) return null;
+    const mine = materialProgress.find((p) => p.exam_id === examId && p.material_id === materialId);
+    return Math.round(((mine?.viewed_pages.length ?? 0) / pages) * 100);
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -158,17 +174,33 @@ export default function ExamList() {
                       {!practical && e.materials && e.materials.length > 0 && (
                         <div style={styles.materialsRow}>
                           教材：
-                          {e.materials.map((m, i) => (
-                            <a
-                              key={i}
-                              href={m.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={styles.materialLink}
-                            >
-                              {m.label}
-                            </a>
-                          ))}
+                          {e.materials.map((m, i) => {
+                            const percent = materialPercent(e.id, m.id, m.pages);
+                            if (percent == null) {
+                              // id/pagesが無い教材は従来通りの外部リンクのまま(フォールバック)
+                              return (
+                                <a
+                                  key={i}
+                                  href={m.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={styles.materialLink}
+                                >
+                                  {m.label}
+                                </a>
+                              );
+                            }
+                            return (
+                              <Link
+                                key={i}
+                                to={`/exams/${encodeURIComponent(e.id)}/materials/${encodeURIComponent(m.id!)}`}
+                                style={styles.materialLink}
+                              >
+                                {m.label}
+                                <span style={styles.materialPercent}>（{percent}%）</span>
+                              </Link>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -320,6 +352,7 @@ const styles: Record<string, React.CSSProperties> = {
   metaRow: { display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' },
   materialsRow: { fontSize: 12.5, color: '#555', marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   materialLink: { color: CYAN, fontWeight: 700, textDecoration: 'none' },
+  materialPercent: { color: '#888', fontWeight: 700, marginLeft: 2 },
   meta: { minWidth: 58 },
   metaLabel: { fontSize: 11, color: '#888' },
   metaValue: { fontSize: 14.5, fontWeight: 700, color: DEEP_BLUE, marginTop: 2 },

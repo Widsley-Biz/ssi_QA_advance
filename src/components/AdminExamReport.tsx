@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getExamReport, type ExamReportCell } from '../lib/exams';
+import {
+  getExamReport,
+  listExams,
+  getExamMaterialProgress,
+  type ExamReportCell,
+  type ExamSummary,
+  type AdminMaterialProgressRow,
+} from '../lib/exams';
 
 const DEEP_BLUE = '#03202F';
 const MAGENTA = '#E21776';
@@ -12,13 +19,21 @@ const MAGENTA = '#E21776';
 export default function AdminExamReport() {
   const navigate = useNavigate();
   const [cells, setCells] = useState<ExamReportCell[]>([]);
+  const [examsWithMaterials, setExamsWithMaterials] = useState<ExamSummary[]>([]);
+  const [selectedExamId, setSelectedExamId] = useState('');
+  const [materialRows, setMaterialRows] = useState<AdminMaterialProgressRow[]>([]);
+  const [materialLoading, setMaterialLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        setCells(await getExamReport());
+        const [report, exams] = await Promise.all([getExamReport(), listExams()]);
+        setCells(report);
+        const withMaterials = exams.filter((e) => e.materials && e.materials.length > 0);
+        setExamsWithMaterials(withMaterials);
+        if (withMaterials.length > 0) setSelectedExamId(withMaterials[0].id);
       } catch (err) {
         setError(err instanceof Error ? err.message : '読み込みに失敗しました');
       } finally {
@@ -26,6 +41,36 @@ export default function AdminExamReport() {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    if (!selectedExamId) return;
+    (async () => {
+      setMaterialLoading(true);
+      try {
+        setMaterialRows(await getExamMaterialProgress(selectedExamId));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : '読み込みに失敗しました');
+      } finally {
+        setMaterialLoading(false);
+      }
+    })();
+  }, [selectedExamId]);
+
+  const selectedExam = examsWithMaterials.find((e) => e.id === selectedExamId);
+
+  const progressMembers = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of materialRows) if (!seen.has(r.user_id)) seen.set(r.user_id, r.display_name);
+    return [...seen.entries()]
+      .map(([user_id, display_name]) => ({ user_id, display_name }))
+      .sort((a, b) => a.display_name.localeCompare(b.display_name, 'ja'));
+  }, [materialRows]);
+
+  const progressByUserMaterial = useMemo(() => {
+    const m = new Map<string, AdminMaterialProgressRow>();
+    for (const r of materialRows) if (r.material_id) m.set(`${r.user_id}:${r.material_id}`, r);
+    return m;
+  }, [materialRows]);
 
   const exams = useMemo(() => {
     const seen = new Map<string, { exam_id: string; exam_name: string; group_name: string }>();
@@ -121,6 +166,76 @@ export default function AdminExamReport() {
           </tbody>
         </table>
       </div>
+
+      {examsWithMaterials.length > 0 && (
+        <>
+          <h2 style={{ ...styles.sectionTitle, marginTop: 40 }}>教材閲覧状況</h2>
+          <p style={styles.hint}>
+            スライド教材をどこまで見たか（ページ画像のうち実際に開いたページの割合）を試験ごとに確認できます。
+          </p>
+          <select
+            value={selectedExamId}
+            onChange={(e) => setSelectedExamId(e.target.value)}
+            style={styles.examSelect}
+          >
+            {examsWithMaterials.map((e) => (
+              <option key={e.id} value={e.id}>{e.name}</option>
+            ))}
+          </select>
+
+          {materialLoading ? (
+            <div style={{ padding: 24, color: '#999' }}>読み込み中...</div>
+          ) : (
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '70vh', border: '1px solid #eee', borderRadius: 10, marginTop: 12 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={styles.thCorner}>メンバー名</th>
+                    {selectedExam?.materials?.map((m) => (
+                      <th key={m.id} style={styles.thSticky}>{m.label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {progressMembers.length === 0 ? (
+                    <tr>
+                      <td colSpan={(selectedExam?.materials?.length ?? 0) + 1} style={{ textAlign: 'center', color: '#999', padding: 24 }}>
+                        データがありません
+                      </td>
+                    </tr>
+                  ) : (
+                    progressMembers.map((m) => (
+                      <tr key={m.user_id} style={styles.tr}>
+                        <td style={styles.tdSticky}>{m.display_name}</td>
+                        {selectedExam?.materials?.map((mat) => {
+                          const row = progressByUserMaterial.get(`${m.user_id}:${mat.id}`);
+                          const viewed = row?.viewed_pages?.length ?? 0;
+                          if (!row || viewed === 0 || !mat.pages) {
+                            return (
+                              <td key={mat.id} style={{ ...styles.td, color: '#999' }}>未着手</td>
+                            );
+                          }
+                          const percent = Math.round((viewed / mat.pages) * 100);
+                          return (
+                            <td key={mat.id} style={styles.td}>
+                              <span style={{ fontWeight: 700, color: percent >= 100 ? '#0a7d55' : DEEP_BLUE }}>
+                                {percent}%
+                              </span>
+                              <span style={{ color: '#999', marginLeft: 6 }}>
+                                （{row.last_page}/{mat.pages}p）
+                              </span>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -148,4 +263,5 @@ const styles: Record<string, React.CSSProperties> = {
     border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
   },
   error: { padding: 16, background: '#FDECF3', borderLeft: `4px solid ${MAGENTA}`, borderRadius: 6, color: '#7a0b3c' },
+  examSelect: { padding: '9px 12px', fontSize: 13.5, border: '1px solid #D5DEE4', borderRadius: 8, outline: 'none', fontFamily: 'inherit', minWidth: 280 },
 };
