@@ -1,8 +1,12 @@
 import { Router } from 'express';
+import { getStorage } from 'firebase-admin/storage';
 import { pool } from '../db.js';
 import { requireRole, type Profile } from '../auth.js';
 
 export const examsRouter = Router();
+
+const MATERIALS_BUCKET = 'widsley-skillcheck-materials';
+const MATERIALS_BASE_URL = `https://storage.googleapis.com/${MATERIALS_BUCKET}/`;
 
 /**
  * 模擬試験（筆記）。
@@ -171,6 +175,55 @@ examsRouter.put('/exams/:examId/materials/:materialId/progress', async (req, res
     [p.id, examId, materialId, page],
   );
   res.json({ ok: true });
+});
+
+/**
+ * スライド教材のページ画像。
+ *
+ * バケット(widsley-skillcheck-materials)は非公開のため、ここで認証・受験資格を
+ * 確認したうえでオブジェクトをそのままストリームする（署名付きURLではなく毎回
+ * ここを経由させる方式。画像は1枚あたり数十〜百数十KB程度で軽いため、
+ * Cloud Run経由でも問題にならない）。
+ */
+examsRouter.get('/exams/:examId/materials/:materialId/pages/:n', async (req, res) => {
+  const p = req.profile!;
+  if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
+  const { examId, materialId } = req.params;
+  const n = Number(req.params.n);
+
+  const exam = (
+    await pool.query(
+      `SELECT id, is_published, opens_at, closes_at, materials FROM exams WHERE id = $1`,
+      [examId],
+    )
+  ).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  const access = await checkExamAccess(exam, p);
+  if (!access.ok) return res.status(403).json({ error: access.reason });
+
+  const material = (exam.materials ?? []).find(
+    (m: { id?: string; pages?: number; url?: string }) => m.id === materialId,
+  );
+  if (!material?.pages || !material.url?.startsWith(MATERIALS_BASE_URL)) {
+    return res.status(404).json({ error: 'material not found' });
+  }
+  if (!Number.isInteger(n) || n < 1 || n > material.pages) {
+    return res.status(404).json({ error: 'page not found' });
+  }
+
+  const prefix = material.url.slice(MATERIALS_BASE_URL.length);
+  const objectPath = `${prefix}/${String(n).padStart(3, '0')}.jpg`;
+
+  try {
+    const file = getStorage().bucket(MATERIALS_BUCKET).file(objectPath);
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    file.createReadStream()
+      .on('error', () => res.status(404).end())
+      .pipe(res);
+  } catch {
+    res.status(502).json({ error: 'failed to load page image' });
+  }
 });
 
 /**

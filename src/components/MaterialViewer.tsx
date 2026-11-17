@@ -4,6 +4,7 @@ import {
   listExams,
   getMyMaterialProgress,
   saveMaterialProgress,
+  fetchMaterialPageBlob,
   type ExamMaterial,
 } from '../lib/exams';
 
@@ -11,10 +12,6 @@ const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
 const MAGENTA = '#E21776';
-
-function pad3(n: number): string {
-  return String(n).padStart(3, '0');
-}
 
 function MaximizeIcon() {
   return (
@@ -72,8 +69,36 @@ export default function MaterialViewer() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [imgSrc, setImgSrc] = useState<string | null>(null);
   const pageRef = useRef(1);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const blobCacheRef = useRef<Map<number, string>>(new Map());
+
+  // バケットが非公開のため、ページ画像はAuthorizationヘッダつきfetchでBlob URL化して使う。
+  // 直近数ページ分だけキャッシュし、溢れた古いものはrevokeして解放する
+  async function loadPageImage(n: number) {
+    if (!examId || !materialId) return;
+    const cache = blobCacheRef.current;
+    const cached = cache.get(n);
+    if (cached) {
+      setImgSrc(cached);
+      return;
+    }
+    try {
+      const url = await fetchMaterialPageBlob(examId, materialId, n);
+      cache.set(n, url);
+      if (cache.size > 6) {
+        const oldestKey = cache.keys().next().value;
+        if (oldestKey !== undefined) {
+          URL.revokeObjectURL(cache.get(oldestKey)!);
+          cache.delete(oldestKey);
+        }
+      }
+      setImgSrc(url);
+    } catch {
+      // 読み込み失敗時は前の画像を表示したままにする
+    }
+  }
 
   useEffect(() => {
     if (!examId || !materialId) return;
@@ -97,6 +122,8 @@ export default function MaterialViewer() {
         viewed.add(startPage);
         setViewedPages(viewed);
         setPage(startPage);
+        pageRef.current = startPage;
+        await loadPageImage(startPage);
         // 初回表示も視聴1ページとして保存する（レジューム位置の再確認も兼ねる）
         saveMaterialProgress(examId, materialId, startPage).catch(() => {
           // 保存に失敗してもビューア自体は止めない
@@ -107,11 +134,19 @@ export default function MaterialViewer() {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examId, materialId]);
 
   useEffect(() => {
     pageRef.current = page;
   }, [page]);
+
+  useEffect(() => {
+    const cache = blobCacheRef.current;
+    return () => {
+      cache.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   useEffect(() => {
     if (!isFullscreen) return;
@@ -139,6 +174,7 @@ export default function MaterialViewer() {
     saveMaterialProgress(examId, materialId, clamped).catch(() => {
       // 保存に失敗してもビューア自体は止めない
     });
+    loadPageImage(clamped);
   }
 
   function goTo(n: number) {
@@ -199,12 +235,13 @@ export default function MaterialViewer() {
       </div>
 
       <div style={styles.viewerWrap}>
-        <img
-          key={page}
-          src={`${material.url}/${pad3(page)}.jpg`}
-          alt={`${material.label} ${page}ページ目`}
-          style={styles.img}
-        />
+        {imgSrc && (
+          <img
+            src={imgSrc}
+            alt={`${material.label} ${page}ページ目`}
+            style={styles.img}
+          />
+        )}
         <button style={styles.maximizeBtn} onClick={() => setIsFullscreen(true)} aria-label="全画面表示">
           <MaximizeIcon />
         </button>
@@ -212,12 +249,13 @@ export default function MaterialViewer() {
 
       {isFullscreen && (
         <div style={styles.fsOverlay} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          <img
-            key={`fs-${page}`}
-            src={`${material.url}/${pad3(page)}.jpg`}
-            alt={`${material.label} ${page}ページ目`}
-            style={styles.fsImg}
-          />
+          {imgSrc && (
+            <img
+              src={imgSrc}
+              alt={`${material.label} ${page}ページ目`}
+              style={styles.fsImg}
+            />
+          )}
           <button style={styles.fsClose} onClick={() => setIsFullscreen(false)} aria-label="閉じる">
             <CloseIcon />
           </button>
