@@ -217,12 +217,21 @@ examsRouter.get('/exams/:examId/materials/:materialId/pages/:n', async (req, res
   try {
     const file = getStorage().bucket(MATERIALS_BUCKET).file(objectPath);
     res.setHeader('Content-Type', 'image/jpeg');
-    res.setHeader('Cache-Control', 'private, max-age=3600');
-    file.createReadStream()
+    // 失敗レスポンスをブラウザにキャッシュさせない（再読み込みが同じ失敗を
+    // 返し続けないように）。成功が確定した最初のデータが来てから初めて
+    // キャッシュ可能にする
+    res.setHeader('Cache-Control', 'no-store');
+    const stream = file.createReadStream();
+    let succeeded = false;
+    stream.once('data', () => {
+      succeeded = true;
+      if (!res.headersSent) res.setHeader('Cache-Control', 'private, max-age=3600');
+    });
+    stream
       .on('error', (err: { code?: number }) => {
         console.error('material page stream error', objectPath, err);
-        if (!res.headersSent) res.status(err.code === 404 ? 404 : 502).json({ error: 'failed to load page image' });
-        else res.end();
+        if (succeeded || res.headersSent) return res.end();
+        res.status(err.code === 404 ? 404 : 502).json({ error: 'failed to load page image' });
       })
       .pipe(res);
   } catch (err) {
