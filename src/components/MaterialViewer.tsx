@@ -70,33 +70,55 @@ export default function MaterialViewer() {
   const [error, setError] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [imgSrc, setImgSrc] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
   const pageRef = useRef(1);
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
   const blobCacheRef = useRef<Map<number, string>>(new Map());
 
+  /** 画像が実際に読み込めたページだけ「視聴済み」として記録・保存する */
+  function markViewed(n: number) {
+    if (!examId || !materialId) return;
+    setViewedPages((prev) => (prev.has(n) ? prev : new Set(prev).add(n)));
+    saveMaterialProgress(examId, materialId, n).catch(() => {
+      // 保存に失敗してもビューア自体は止めない
+    });
+  }
+
   // バケットが非公開のため、ページ画像はAuthorizationヘッダつきfetchでBlob URL化して使う。
-  // 直近数ページ分だけキャッシュし、溢れた古いものはrevokeして解放する
+  // 直近数ページ分だけキャッシュし、溢れた古いものはrevokeして解放する。
+  // pageRef.current と一致しない結果（素早いページ送りで古いリクエストが後から
+  // 返ってきたもの）は適用せずに捨てる
   async function loadPageImage(n: number) {
     if (!examId || !materialId) return;
     const cache = blobCacheRef.current;
     const cached = cache.get(n);
     if (cached) {
       setImgSrc(cached);
+      setImgError(false);
+      markViewed(n);
       return;
     }
     try {
       const url = await fetchMaterialPageBlob(examId, materialId, n);
+      if (pageRef.current !== n) {
+        URL.revokeObjectURL(url);
+        return;
+      }
       cache.set(n, url);
       if (cache.size > 6) {
-        const oldestKey = cache.keys().next().value;
-        if (oldestKey !== undefined) {
-          URL.revokeObjectURL(cache.get(oldestKey)!);
-          cache.delete(oldestKey);
+        for (const key of cache.keys()) {
+          if (key !== n) {
+            URL.revokeObjectURL(cache.get(key)!);
+            cache.delete(key);
+            break;
+          }
         }
       }
       setImgSrc(url);
+      setImgError(false);
+      markViewed(n);
     } catch {
-      // 読み込み失敗時は前の画像を表示したままにする
+      if (pageRef.current === n) setImgError(true);
     }
   }
 
@@ -114,20 +136,15 @@ export default function MaterialViewer() {
         setExamName(exam.name);
         setMaterial(mat);
         const mine = progress.find((p) => p.exam_id === examId && p.material_id === materialId);
-        const viewed = new Set(mine?.viewed_pages ?? []);
+        setViewedPages(new Set(mine?.viewed_pages ?? []));
         const startPage =
           mine?.last_page && mine.last_page >= 1 && mine.last_page <= mat.pages
             ? mine.last_page
             : 1;
-        viewed.add(startPage);
-        setViewedPages(viewed);
         setPage(startPage);
         pageRef.current = startPage;
+        // 初回表示も視聴1ページとして記録する（読み込めたら markViewed 経由で保存される）
         await loadPageImage(startPage);
-        // 初回表示も視聴1ページとして保存する（レジューム位置の再確認も兼ねる）
-        saveMaterialProgress(examId, materialId, startPage).catch(() => {
-          // 保存に失敗してもビューア自体は止めない
-        });
       } catch (err) {
         setError(err instanceof Error ? err.message : '読み込みに失敗しました');
       } finally {
@@ -169,11 +186,8 @@ export default function MaterialViewer() {
   function visitPage(n: number) {
     if (!material || !examId || !materialId) return;
     const clamped = Math.min(Math.max(1, n), material.pages!);
+    pageRef.current = clamped;
     setPage(clamped);
-    setViewedPages((prev) => (prev.has(clamped) ? prev : new Set(prev).add(clamped)));
-    saveMaterialProgress(examId, materialId, clamped).catch(() => {
-      // 保存に失敗してもビューア自体は止めない
-    });
     loadPageImage(clamped);
   }
 
@@ -235,12 +249,19 @@ export default function MaterialViewer() {
       </div>
 
       <div style={styles.viewerWrap}>
-        {imgSrc && (
-          <img
-            src={imgSrc}
-            alt={`${material.label} ${page}ページ目`}
-            style={styles.img}
-          />
+        {imgError ? (
+          <div style={styles.imgErrorBox}>
+            <div>このページの画像を読み込めませんでした</div>
+            <button style={styles.retryBtn} onClick={() => loadPageImage(page)}>再読み込み</button>
+          </div>
+        ) : (
+          imgSrc && (
+            <img
+              src={imgSrc}
+              alt={`${material.label} ${page}ページ目`}
+              style={styles.img}
+            />
+          )
         )}
         <button style={styles.maximizeBtn} onClick={() => setIsFullscreen(true)} aria-label="全画面表示">
           <MaximizeIcon />
@@ -249,12 +270,19 @@ export default function MaterialViewer() {
 
       {isFullscreen && (
         <div style={styles.fsOverlay} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-          {imgSrc && (
-            <img
-              src={imgSrc}
-              alt={`${material.label} ${page}ページ目`}
-              style={styles.fsImg}
-            />
+          {imgError ? (
+            <div style={{ ...styles.imgErrorBox, color: '#fff' }}>
+              <div>このページの画像を読み込めませんでした</div>
+              <button style={styles.retryBtn} onClick={() => loadPageImage(page)}>再読み込み</button>
+            </div>
+          ) : (
+            imgSrc && (
+              <img
+                src={imgSrc}
+                alt={`${material.label} ${page}ページ目`}
+                style={styles.fsImg}
+              />
+            )
           )}
           <button style={styles.fsClose} onClick={() => setIsFullscreen(false)} aria-label="閉じる">
             <CloseIcon />
@@ -319,6 +347,8 @@ const styles: Record<string, React.CSSProperties> = {
 
   viewerWrap: { marginTop: 18, textAlign: 'center', background: '#F5F9FB', borderRadius: 10, padding: 12, position: 'relative' },
   img: { maxWidth: '100%', borderRadius: 6, boxShadow: '0 2px 10px rgba(3,32,47,0.12)' },
+  imgErrorBox: { padding: '40px 16px', fontSize: 13.5, color: '#7a0b3c', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 },
+  retryBtn: { padding: '8px 16px', border: 'none', borderRadius: 8, background: DEEP_BLUE, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
   maximizeBtn: {
     position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: 8,
     border: 'none', background: 'rgba(3,32,47,0.72)', color: '#fff',

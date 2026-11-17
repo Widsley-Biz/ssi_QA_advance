@@ -219,9 +219,14 @@ examsRouter.get('/exams/:examId/materials/:materialId/pages/:n', async (req, res
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'private, max-age=3600');
     file.createReadStream()
-      .on('error', () => res.status(404).end())
+      .on('error', (err: { code?: number }) => {
+        console.error('material page stream error', objectPath, err);
+        if (!res.headersSent) res.status(err.code === 404 ? 404 : 502).json({ error: 'failed to load page image' });
+        else res.end();
+      })
       .pipe(res);
-  } catch {
+  } catch (err) {
+    console.error('material page load error', objectPath, err);
     res.status(502).json({ error: 'failed to load page image' });
   }
 });
