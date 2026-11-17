@@ -363,7 +363,7 @@ examsRouter.post('/exams/:examId/start', async (req, res) => {
 
   const exam = (
     await pool.query(
-      `SELECT id, name, description, pass_score, time_limit_min, shuffle_questions,
+      `SELECT id, name, description, kind, pass_score, time_limit_min, shuffle_questions,
               is_published, opens_at, closes_at, max_attempts
          FROM exams WHERE id = $1`,
       [examId],
@@ -372,6 +372,7 @@ examsRouter.post('/exams/:examId/start', async (req, res) => {
   if (!exam) return res.status(404).json({ error: 'exam not found' });
   const access = await checkExamAccess(exam, p);
   if (!access.ok) return res.status(403).json({ error: access.reason });
+  if (exam.kind !== 'written') return res.status(409).json({ error: 'not a written exam' });
 
   if (exam.max_attempts != null && p.role !== 'board') {
     const { rows: cnt } = await pool.query(
@@ -608,6 +609,9 @@ examsRouter.get('/exams/report', requireRole('board'), async (_req, res) => {
                FROM exam_targets WHERE exam_id = e.id
             ) t ON true
       WHERE p.role <> 'retired'
+        -- kind='material'はテストを持たない教材のみコースなので、
+        -- 永久に「未受験」になる列をマトリクスに残さないよう除外する
+        AND e.kind <> 'material'
       ORDER BY p.display_name, e.group_name, e.sort_order`,
   );
   res.json(rows);

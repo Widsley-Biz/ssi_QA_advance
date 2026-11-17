@@ -31,7 +31,9 @@ export default function AdminExamReport() {
       try {
         const [report, exams] = await Promise.all([getExamReport(), listExams()]);
         setCells(report);
-        const withMaterials = exams.filter((e) => e.materials && e.materials.length > 0);
+        // 進捗を記録しない教材（動画リンク等、id/pagesを持たない）しか無い試験は
+        // ドロップダウンに出しても選べる列が無いだけなので、ここで除外する
+        const withMaterials = exams.filter((e) => e.materials?.some((m) => m.id && m.pages));
         setExamsWithMaterials(withMaterials);
         if (withMaterials.length > 0) setSelectedExamId(withMaterials[0].id);
       } catch (err) {
@@ -57,6 +59,11 @@ export default function AdminExamReport() {
   }, [selectedExamId]);
 
   const selectedExam = examsWithMaterials.find((e) => e.id === selectedExamId);
+  // 動画リンク等、進捗を記録しない教材は列として出さない
+  const trackedMaterials = useMemo(
+    () => (selectedExam?.materials ?? []).filter((m) => m.id && m.pages),
+    [selectedExam],
+  );
 
   const progressMembers = useMemo(() => {
     const seen = new Map<string, string>();
@@ -191,7 +198,7 @@ export default function AdminExamReport() {
                 <thead>
                   <tr>
                     <th style={styles.thCorner}>メンバー名</th>
-                    {selectedExam?.materials?.map((m) => (
+                    {trackedMaterials.map((m) => (
                       <th key={m.id} style={styles.thSticky}>{m.label}</th>
                     ))}
                   </tr>
@@ -199,7 +206,7 @@ export default function AdminExamReport() {
                 <tbody>
                   {progressMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={(selectedExam?.materials?.length ?? 0) + 1} style={{ textAlign: 'center', color: '#999', padding: 24 }}>
+                      <td colSpan={trackedMaterials.length + 1} style={{ textAlign: 'center', color: '#999', padding: 24 }}>
                         データがありません
                       </td>
                     </tr>
@@ -207,7 +214,7 @@ export default function AdminExamReport() {
                     progressMembers.map((m) => (
                       <tr key={m.user_id} style={styles.tr}>
                         <td style={styles.tdSticky}>{m.display_name}</td>
-                        {selectedExam?.materials?.map((mat) => {
+                        {trackedMaterials.map((mat) => {
                           const row = progressByUserMaterial.get(`${m.user_id}:${mat.id}`);
                           const viewed = row?.viewed_pages?.length ?? 0;
                           if (!row || viewed === 0 || !mat.pages) {

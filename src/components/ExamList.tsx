@@ -136,6 +136,7 @@ export default function ExamList() {
                   // 実技はここで採点しない。問題数・満点・合格ラインを出すと
                   // すべて0になって誤解を生むので、カードの中身から分岐させる
                   const practical = e.kind === 'practical';
+                  const materialOnly = e.kind === 'material';
                   const isFormal = Boolean(e.opens_at || e.closes_at || e.max_attempts);
                   const now = new Date();
                   const notYetOpen = e.opens_at ? now < new Date(e.opens_at) : false;
@@ -149,6 +150,7 @@ export default function ExamList() {
                         <div style={styles.cardName}>{e.name}</div>
                         {isFormal && <span style={styles.formal}>正式試験</span>}
                         {practical && <span style={styles.practical}>実技</span>}
+                        {materialOnly && <span style={styles.practical}>教材</span>}
                         {!e.is_published && <span style={styles.draft}>非公開</span>}
                       </div>
 
@@ -162,6 +164,8 @@ export default function ExamList() {
 
                       {practical ? (
                         <div style={styles.practicalDesc}>{e.description}</div>
+                      ) : materialOnly ? (
+                        e.description && <div style={styles.practicalDesc}>{e.description}</div>
                       ) : (
                         <div style={styles.metaRow}>
                           <Meta label="問題数" value={`${e.question_count}問`} />
@@ -204,56 +208,60 @@ export default function ExamList() {
                         </div>
                       )}
 
-                      <div style={styles.myRow}>
-                        {practical ? (
-                          Number(e.my_practical_count) > 0 ? (
+                      {!materialOnly && (
+                        <div style={styles.myRow}>
+                          {practical ? (
+                            Number(e.my_practical_count) > 0 ? (
+                              <>
+                                提出 <b>{Number(e.my_practical_count)}</b> 回
+                                {e.my_practical_at && (
+                                  <> ／ 最終 {new Date(e.my_practical_at).toLocaleDateString('ja-JP')}</>
+                                )}
+                              </>
+                            ) : (
+                              <span style={{ color: '#888' }}>まだ提出していません</span>
+                            )
+                          ) : e.my_attempts > 0 ? (
                             <>
-                              提出 <b>{Number(e.my_practical_count)}</b> 回
-                              {e.my_practical_at && (
-                                <> ／ 最終 {new Date(e.my_practical_at).toLocaleDateString('ja-JP')}</>
-                              )}
+                              受験 <b>{Number(e.my_attempts)}</b> 回 ／ 最高得点{' '}
+                              <b style={{ color: Number(e.my_best_score ?? 0) >= Number(e.pass_score) ? '#0a7d55' : DEEP_BLUE }}>
+                                {Number(e.my_best_score)}点
+                              </b>
                             </>
                           ) : (
-                            <span style={{ color: '#888' }}>まだ提出していません</span>
-                          )
-                        ) : e.my_attempts > 0 ? (
-                          <>
-                            受験 <b>{Number(e.my_attempts)}</b> 回 ／ 最高得点{' '}
-                            <b style={{ color: Number(e.my_best_score ?? 0) >= Number(e.pass_score) ? '#0a7d55' : DEEP_BLUE }}>
-                              {Number(e.my_best_score)}点
-                            </b>
-                          </>
-                        ) : (
-                          <span style={{ color: '#888' }}>まだ受験していません</span>
-                        )}
-                      </div>
+                            <span style={{ color: '#888' }}>まだ受験していません</span>
+                          )}
+                        </div>
+                      )}
 
-                      <button
-                        style={{
-                          ...(practical ? styles.guideBtn : styles.startBtn),
-                          ...(disabled ? styles.btnDisabled : {}),
-                        }}
-                        disabled={disabled}
-                        onClick={() =>
-                          navigate(
-                            practical
-                              ? `/exams/${encodeURIComponent(e.id)}/practical`
-                              : `/exams/${encodeURIComponent(e.id)}/take`,
-                          )
-                        }
-                      >
-                        {practical
-                          ? '進め方を見る'
-                          : notYetOpen
-                            ? 'まだ開始していません'
-                            : closed
-                              ? '受付終了'
-                              : limitReached
-                                ? '受験回数の上限です'
-                                : e.my_attempts > 0
-                                  ? 'もう一度受ける'
-                                  : '受験する'}
-                      </button>
+                      {!materialOnly && (
+                        <button
+                          style={{
+                            ...(practical ? styles.guideBtn : styles.startBtn),
+                            ...(disabled ? styles.btnDisabled : {}),
+                          }}
+                          disabled={disabled}
+                          onClick={() =>
+                            navigate(
+                              practical
+                                ? `/exams/${encodeURIComponent(e.id)}/practical`
+                                : `/exams/${encodeURIComponent(e.id)}/take`,
+                            )
+                          }
+                        >
+                          {practical
+                            ? '進め方を見る'
+                            : notYetOpen
+                              ? 'まだ開始していません'
+                              : closed
+                                ? '受付終了'
+                                : limitReached
+                                  ? '受験回数の上限です'
+                                  : e.my_attempts > 0
+                                    ? 'もう一度受ける'
+                                    : '受験する'}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

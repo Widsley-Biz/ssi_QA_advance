@@ -18,7 +18,10 @@ DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'exams_kind_check') THEN
     ALTER TABLE exams ADD CONSTRAINT exams_kind_check
-      CHECK (kind IN ('written', 'practical'));
+      -- 2026-11: 'material'（テストを持たない教材のみコース）を追加。
+      -- このファイルは当初'written','practical'のみで初回適用済みのため、
+      -- 本番への反映はexams_kind_add_material.sql（DROP→ADD）で行う
+      CHECK (kind IN ('written', 'practical', 'material'));
   END IF;
   -- 実技なのに案内が無いと、説明ページが空になって受講者が迷子になる
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'exams_practical_needs_guide') THEN
@@ -27,7 +30,7 @@ BEGIN
   END IF;
 END $$;
 
-COMMENT ON COLUMN exams.kind  IS 'written=クリックで出題が始まる / practical=説明ページを挟んで外部へ送る';
+COMMENT ON COLUMN exams.kind  IS 'written=クリックで出題が始まる / practical=説明ページを挟んで外部へ送る / material=テストの無い教材のみコース';
 COMMENT ON COLUMN exams.guide IS '実技のときだけ使う案内。{intro, what_we_see[], steps[], links[], grading, answers_policy}';
 
 -- ---- 実技の自己申告（点数は持たない） ----
