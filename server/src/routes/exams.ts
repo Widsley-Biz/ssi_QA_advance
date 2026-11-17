@@ -102,6 +102,78 @@ examsRouter.get('/exams', async (req, res) => {
 });
 
 /**
+ * 教材(materials)の視聴進捗。
+ *
+ * exams.materials ([{id,label,url,pages}]) の各教材について、
+ * 実際に開いたページの集合(viewed_pages)と再開位置(last_page)を持つ。
+ * pages(総ページ数)はテーブルに持たず、常に exams.materials[].pages を正とする
+ * （クライアント申告値をそのまま信用しない）。
+ */
+
+/** 自分の教材進捗を全件返す。一覧画面の%バッジとビューアの再開位置の両方がこれを使う */
+examsRouter.get('/exams/materials/progress/mine', async (req, res) => {
+  const p = req.profile!;
+  const { rows } = await pool.query(
+    `SELECT exam_id, material_id, viewed_pages, last_page, updated_at
+       FROM material_progress WHERE user_id = $1`,
+    [p.id],
+  );
+  res.json(rows);
+});
+
+/** 管理者向け：対象試験の全プロフィール×教材進捗（未着手者もLEFT JOINで出す） */
+examsRouter.get('/exams/:examId/materials/progress', requireRole('board'), async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT pr.id AS user_id, pr.display_name,
+            mp.material_id, mp.viewed_pages, mp.last_page, mp.updated_at
+       FROM profiles pr
+       LEFT JOIN material_progress mp ON mp.user_id = pr.id AND mp.exam_id = $1
+      WHERE pr.role <> 'retired'
+      ORDER BY pr.display_name`,
+    [req.params.examId],
+  );
+  res.json(rows);
+});
+
+/** ページ遷移のたびに呼ぶ。デバウンスしない（タブを閉じる直前の遷移を失わないため） */
+examsRouter.put('/exams/:examId/materials/:materialId/progress', async (req, res) => {
+  const p = req.profile!;
+  if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
+  const { examId, materialId } = req.params;
+
+  const exam = (
+    await pool.query(
+      `SELECT id, is_published, opens_at, closes_at, materials FROM exams WHERE id = $1`,
+      [examId],
+    )
+  ).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  const access = await checkExamAccess(exam, p);
+  if (!access.ok) return res.status(403).json({ error: access.reason });
+
+  const material = (exam.materials ?? []).find(
+    (m: { id?: string; pages?: number }) => m.id === materialId,
+  );
+  if (!material?.pages) return res.status(404).json({ error: 'material not found' });
+
+  const page = Math.min(Math.max(1, Math.trunc(Number(req.body?.page))), material.pages);
+  if (!Number.isInteger(page)) return res.status(400).json({ error: 'bad page' });
+
+  await pool.query(
+    `INSERT INTO material_progress (user_id, exam_id, material_id, viewed_pages, last_page)
+     VALUES ($1, $2, $3, ARRAY[$4]::int[], $4)
+     ON CONFLICT (user_id, exam_id, material_id) DO UPDATE SET
+       viewed_pages = CASE WHEN $4 = ANY(material_progress.viewed_pages)
+                            THEN material_progress.viewed_pages
+                            ELSE array_append(material_progress.viewed_pages, $4) END,
+       last_page = $4,
+       updated_at = now()`,
+    [p.id, examId, materialId, page],
+  );
+  res.json({ ok: true });
+});
+
+/**
  * 実技の案内。文言とリンクはDBの guide(jsonb) にしか無いので、
  * 直すときはSQLを流すだけでよく、デプロイは要らない。
  */
