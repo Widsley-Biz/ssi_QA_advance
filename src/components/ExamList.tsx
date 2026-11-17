@@ -155,6 +155,23 @@ export default function ExamList() {
                         </div>
                       )}
 
+                      {!practical && e.materials && e.materials.length > 0 && (
+                        <div style={styles.materialsRow}>
+                          教材：
+                          {e.materials.map((m, i) => (
+                            <a
+                              key={i}
+                              href={m.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={styles.materialLink}
+                            >
+                              {m.label}
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
                       <div style={styles.myRow}>
                         {practical ? (
                           Number(e.my_practical_count) > 0 ? (
@@ -301,6 +318,8 @@ const styles: Record<string, React.CSSProperties> = {
   practicalDesc: { fontSize: 12.5, color: '#444', lineHeight: 1.6, marginTop: 12 },
   guideBtn: { width: '100%', marginTop: 14, padding: '10px 0', border: `1px solid ${CYAN}`, borderRadius: 8, background: '#fff', color: DEEP_BLUE, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' },
   metaRow: { display: 'flex', gap: 14, marginTop: 14, flexWrap: 'wrap' },
+  materialsRow: { fontSize: 12.5, color: '#555', marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  materialLink: { color: CYAN, fontWeight: 700, textDecoration: 'none' },
   meta: { minWidth: 58 },
   metaLabel: { fontSize: 11, color: '#888' },
   metaValue: { fontSize: 14.5, fontWeight: 700, color: DEEP_BLUE, marginTop: 2 },
