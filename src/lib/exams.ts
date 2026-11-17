@@ -68,6 +68,25 @@ export interface ExamMaterial {
   pages?: number;
 }
 
+/**
+ * スライドのページ画像を取得し、Blob URLにして返す。
+ *
+ * バケットは非公開のため、<img src>に直接GCSのURLを渡すことはできない
+ * （<img>はAuthorizationヘッダを送れない）。このAPIを認証つきでfetchし、
+ * 取得したバイト列をBlob URLに変換して<img src>に使う。
+ */
+export async function fetchMaterialPageBlob(examId: string, materialId: string, page: number): Promise<string> {
+  if (!API_URL) throw new Error('APIが設定されていません（VITE_API_URL）');
+  const authHeader = await getAuthHeader();
+  const res = await fetch(
+    `${API_URL}/exams/${encodeURIComponent(examId)}/materials/${encodeURIComponent(materialId)}/pages/${page}`,
+    { headers: { ...authHeader } },
+  );
+  if (!res.ok) throw new Error(`ページの取得に失敗しました（${res.status}）`);
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 /** 教材1件ぶんの視聴進捗 */
 export interface MaterialProgress {
   exam_id: string;
