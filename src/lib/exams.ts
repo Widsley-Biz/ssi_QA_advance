@@ -28,8 +28,10 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
  * 'written'   … クリックすると出題が始まる（従来の筆記）
  * 'practical' … 説明ページを1枚挟んで、GitHubリポジトリと練習サイトへ送る。
  *               採点はPRレビュー側で行うので、ここでは点数を持たない。
+ * 'material'  … テストを持たない教材のみのコース（スライド・外部リンク等）。
+ *               受験ボタン・問題数等のメタ情報は出さない。
  */
-export type ExamKind = 'written' | 'practical';
+export type ExamKind = 'written' | 'practical' | 'material';
 
 export interface ExamSummary {
   id: string;
