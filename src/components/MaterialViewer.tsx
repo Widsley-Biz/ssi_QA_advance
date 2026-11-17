@@ -164,6 +164,8 @@ export default function MaterialViewer() {
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    // ピンチズーム中（拡大表示中）の指ドラッグはページ送りと誤認識しない
+    if (window.visualViewport && window.visualViewport.scale > 1.01) return;
     goTo(dx < 0 ? page + 1 : page - 1);
   }
 
@@ -286,7 +288,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fsOverlay: {
     position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#000', zIndex: 1000,
-    display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'none',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', touchAction: 'manipulation',
   },
   fsImg: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' },
   fsClose: {
