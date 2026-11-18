@@ -179,6 +179,14 @@ export default function ExamList() {
                         <div style={styles.materialsRow}>
                           教材：
                           {e.materials.map((m, i) => {
+                            if (!m.url) {
+                              // 準備中（録画がまだ無い等）: リンクにせずそのまま表示
+                              return (
+                                <span key={i} style={styles.materialComingSoon}>
+                                  {m.label}
+                                </span>
+                              );
+                            }
                             const percent = materialPercent(e.id, m.id, m.pages);
                             if (percent == null) {
                               // id/pagesが無い教材は従来通りの外部リンクのまま(フォールバック)
@@ -361,6 +369,7 @@ const styles: Record<string, React.CSSProperties> = {
   materialsRow: { fontSize: 12.5, color: '#555', marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
   materialLink: { color: CYAN, fontWeight: 700, textDecoration: 'none' },
   materialPercent: { color: '#888', fontWeight: 700, marginLeft: 2 },
+  materialComingSoon: { color: '#999', fontWeight: 700, fontStyle: 'italic' },
   meta: { minWidth: 58 },
   metaLabel: { fontSize: 11, color: '#888' },
   metaValue: { fontSize: 14.5, fontWeight: 700, color: DEEP_BLUE, marginTop: 2 },
