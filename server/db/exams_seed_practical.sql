@@ -12,7 +12,7 @@ INSERT INTO exams (
   'playwright-mock-practical',
   '実技模擬（POM・全45問）',
   'GitHubリポジトリの出題ファイルを解いてPRを出す形式の実技練習です。回数制限はありません。',
-  'Playwright社内試験',
+  'Playwright社内試験模擬（座学・実技）',
   'practical',
   0,        -- 点数はSkillCheckでは持たない（採点はPRレビュー）
   NULL,     -- 時間制限なし

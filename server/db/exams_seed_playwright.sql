@@ -1,18 +1,18 @@
 -- ============================================================
--- 011_exam_playwright.sql  –  Playwright模擬筆記の設問
+-- 011_exam_playwright.sql  –  Playwright座学模擬の設問
 -- ============================================================
 -- AirCourse からエクスポートしたCSVを
 --   supabase/tools/import_aircourse_csv.py
 -- で変換したもの。手で編集せず、CSVを直してから再生成すること。
 -- ============================================================
 
--- Playwright社内試験 模擬筆記 セットA（14問 / 満点100点 / 合格ライン65点）
+-- Playwright社内試験 座学模擬 セットA（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-a';
 INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
-  ('playwright-mock-written-a', 'Playwright社内試験 模擬筆記 セットA',
+  ('playwright-mock-written-a', 'Playwright社内試験 座学模擬 セットA',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
-   'Playwright社内試験',
+   'Playwright社内試験模擬（座学・実技）',
    65, NULL, true, true, 1)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
@@ -124,13 +124,13 @@ INSERT INTO exam_questions
 <p><strong>【Cが不正解の理由】</strong><br>newキーワードなしでSearchPage(page)を呼び出しています。JavaScriptのクラスはnewなしでコンストラクタを呼ぶと「Class constructor SearchPage cannot be invoked without ''new''」というTypeErrorになります。</p>
 <p><strong>【Dが不正解の理由】</strong><br>SearchPage.search()のようにクラス名から直接メソッドを呼び出そうとしています。search()はstaticメソッドではなくインスタンスメソッドなので、必ずnewでインスタンスを生成してから呼び出す必要があります。</p>', 10);
 
--- Playwright社内試験 模擬筆記 セットB（14問 / 満点100点 / 合格ライン65点）
+-- Playwright社内試験 座学模擬 セットB（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-b';
 INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
-  ('playwright-mock-written-b', 'Playwright社内試験 模擬筆記 セットB',
+  ('playwright-mock-written-b', 'Playwright社内試験 座学模擬 セットB',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
-   'Playwright社内試験',
+   'Playwright社内試験模擬（座学・実技）',
    65, NULL, true, true, 2)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
@@ -238,13 +238,13 @@ INSERT INTO exam_questions
 <p><strong>【Bが不正解の理由】</strong><br>newキーワードなしでCartPage(page)を呼んでいます。クラスはnewなしでは呼び出せず「Cannot call a class as a function」というTypeErrorになります。</p>
 <p><strong>【Dが不正解の理由】</strong><br>new CartPage()とpageを引数に渡していません。constructorでthis.page = pageを参照するためpageがundefinedになり、page.locator()呼び出し時にエラーになります。</p>', 10);
 
--- Playwright社内試験 模擬筆記 セットC（14問 / 満点100点 / 合格ライン65点）
+-- Playwright社内試験 座学模擬 セットC（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-c';
 INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
-  ('playwright-mock-written-c', 'Playwright社内試験 模擬筆記 セットC',
+  ('playwright-mock-written-c', 'Playwright社内試験 座学模擬 セットC',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
-   'Playwright社内試験',
+   'Playwright社内試験模擬（座学・実技）',
    65, NULL, true, true, 3)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
@@ -351,13 +351,13 @@ INSERT INTO exam_questions
 <p><strong>【Cが不正解の理由】</strong><br>newキーワードなしでDashboardPage(page)を呼んでいます。クラスはnewなしでは呼び出せずTypeErrorになります。</p>
 <p><strong>【Dが不正解の理由】</strong><br>DashboardPage.getHeadingText(page)はstaticメソッドの呼び出し形式です。getHeadingText()はインスタンスメソッドなので、必ずnewでインスタンスを作ってから呼ぶ必要があります。</p>', 10);
 
--- Playwright社内試験 模擬筆記 セットD（14問 / 満点100点 / 合格ライン65点）
+-- Playwright社内試験 座学模擬 セットD（14問 / 満点100点 / 合格ライン65点）
 DELETE FROM exam_questions WHERE exam_id = 'playwright-mock-written-d';
 INSERT INTO exams (id, name, description, group_name, pass_score, time_limit_min,
                    shuffle_questions, is_published, sort_order) VALUES
-  ('playwright-mock-written-d', 'Playwright社内試験 模擬筆記 セットD',
+  ('playwright-mock-written-d', 'Playwright社内試験 座学模擬 セットD',
    '全14問・満点100点。合格ライン65点。何度でも受け直せます。',
-   'Playwright社内試験',
+   'Playwright社内試験模擬（座学・実技）',
    65, NULL, true, true, 4)
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
