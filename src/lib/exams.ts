@@ -65,7 +65,8 @@ export interface ExamSummary {
 export interface ExamMaterial {
   id?: string;
   label: string;
-  url: string;
+  /** 未設定 = 準備中（動画がまだ無い等）。ExamListでは非リンクのテキスト表示になる */
+  url?: string;
   note?: string;
   pages?: number;
 }
