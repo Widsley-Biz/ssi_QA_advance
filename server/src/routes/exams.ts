@@ -132,7 +132,7 @@ examsRouter.get('/exams/:examId/materials/progress', requireRole('board'), async
             mp.material_id, mp.viewed_pages, mp.last_page, mp.updated_at
        FROM profiles pr
        LEFT JOIN material_progress mp ON mp.user_id = pr.id AND mp.exam_id = $1
-      WHERE pr.role <> 'retired'
+      WHERE pr.role NOT IN ('retired', 'board')
       ORDER BY pr.display_name`,
     [req.params.examId],
   );
@@ -626,7 +626,7 @@ examsRouter.get('/exams/report', requireRole('board'), async (_req, res) => {
                     count(*) FILTER (WHERE email = p.email)::int AS mine
                FROM exam_targets WHERE exam_id = e.id
             ) t ON true
-      WHERE p.role <> 'retired'
+      WHERE p.role NOT IN ('retired', 'board')
         -- kind='material'はテストを持たない教材のみコースなので、
         -- 永久に「未受験」になる列をマトリクスに残さないよう除外する
         AND e.kind <> 'material'

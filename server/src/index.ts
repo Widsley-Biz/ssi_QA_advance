@@ -7,6 +7,7 @@ import { assessmentsRouter } from './routes/assessments.js';
 import { invitationsRouter } from './routes/invitations.js';
 import { certificationsRouter } from './routes/certifications.js';
 import { examsRouter } from './routes/exams.js';
+import { dashboardRouter } from './routes/dashboard.js';
 
 const app = express();
 app.use(cors({ origin: (process.env.CORS_ORIGIN ?? '').split(',').filter(Boolean) }));
@@ -25,6 +26,7 @@ app.use(assessmentsRouter);
 app.use(invitationsRouter);
 app.use(certificationsRouter);
 app.use(examsRouter);
+app.use(dashboardRouter);
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
