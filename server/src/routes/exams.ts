@@ -186,7 +186,8 @@ examsRouter.put('/exams/:examId/materials/:materialId/progress', async (req, res
   // デイリー学習進捗・個人別推移で使う「新しく読んだページ」のログ。再訪問は記録しない
   if (isNewPage) {
     await pool.query(
-      `INSERT INTO material_progress_log (user_id, exam_id, material_id, page) VALUES ($1, $2, $3, $4)`,
+      `INSERT INTO material_progress_log (user_id, exam_id, material_id, page) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, exam_id, material_id, page) DO NOTHING`,
       [p.id, examId, materialId, page],
     );
   }

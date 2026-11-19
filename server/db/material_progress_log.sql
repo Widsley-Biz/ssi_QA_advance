@@ -25,5 +25,19 @@ CREATE TABLE IF NOT EXISTS material_progress_log (
 CREATE INDEX IF NOT EXISTS idx_material_progress_log_user_viewed
   ON material_progress_log(user_id, viewed_at);
 
+-- PUTはデバウンスしないため、同じ新規ページに対して短時間に2回INSERTが
+-- 飛んでくる可能性がある。二重計上を防ぐため一意制約+ON CONFLICT DO NOTHING
+CREATE UNIQUE INDEX IF NOT EXISTS uq_material_progress_log_page
+  ON material_progress_log(user_id, exam_id, material_id, page);
+
 -- 追記専用ログ。UPDATE/DELETEは与えない
 GRANT SELECT, INSERT ON material_progress_log TO app_user;
+-- bigserialのシーケンスはテーブルと別オブジェクトなので忘れず付与する
+-- （本番APIはapp_userで接続しており、ここが無いとINSERTが
+-- 「permission denied for sequence」で失敗する）
+GRANT USAGE, SELECT ON SEQUENCE material_progress_log_id_seq TO app_user;
+
+-- 確認用: app_userがテーブル・シーケンスの両方に書き込めるか
+SELECT
+  has_table_privilege('app_user', 'material_progress_log', 'INSERT') AS can_insert_table,
+  has_sequence_privilege('app_user', 'material_progress_log_id_seq', 'USAGE') AS can_use_sequence;
