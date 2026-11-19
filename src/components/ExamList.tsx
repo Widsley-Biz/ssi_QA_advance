@@ -96,6 +96,38 @@ export default function ExamList() {
     return Math.round(((mine?.viewed_pages.length ?? 0) / pages) * 100);
   }
 
+  const examById = useMemo(() => new Map(exams.map((e) => [e.id, e])), [exams]);
+
+  // 受験履歴はタブのcategoryに属する試験の分だけに絞る（JSTQB FLの確認テスト等、
+  // learningカテゴリの筆記がここに混ざって「模擬試験」「社内認定試験」タブに出ないように）
+  const attemptsForTab = useMemo(
+    () =>
+      attempts.filter((a) => {
+        const exam = examById.get(a.exam_id);
+        return exam ? effectiveCategory(exam) === activeTab : false;
+      }),
+    [attempts, examById, activeTab],
+  );
+
+  /** 学習タブ専用: 教材(スライド等)の閲覧履歴。閲覧済みのものだけ、最終閲覧が新しい順 */
+  const materialHistory = useMemo(() => {
+    const rows: { key: string; examId: string; materialId: string; label: string; percent: number; updatedAt: string }[] = [];
+    for (const mp of materialProgress) {
+      const exam = examById.get(mp.exam_id);
+      const material = exam?.materials?.find((m) => m.id === mp.material_id);
+      if (!exam || !material?.pages || mp.viewed_pages.length === 0) continue;
+      rows.push({
+        key: `${mp.exam_id}:${mp.material_id}`,
+        examId: mp.exam_id,
+        materialId: mp.material_id,
+        label: `${exam.name}｜${material.label}`,
+        percent: Math.round((mp.viewed_pages.length / material.pages) * 100),
+        updatedAt: mp.updated_at,
+      });
+    }
+    return rows.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }, [materialProgress, examById]);
+
   const tabCounts = useMemo(() => {
     const counts: Record<Tab, number> = { learning: 0, mock: 0, certification: 0 };
     for (const e of exams) counts[effectiveCategory(e)]++;
@@ -351,55 +383,109 @@ export default function ExamList() {
         );
       })}
 
-      {activeTab !== 'learning' && attempts.length > 0 && (
-        <>
-          <h2 style={styles.subTitle}>受験履歴</h2>
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>試験</th>
-                  <th style={styles.th}>回答者</th>
-                  <th style={styles.th}>提出日時</th>
-                  <th style={styles.th}>得点</th>
-                  <th style={styles.th}>判定</th>
-                  <th style={styles.th}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {attempts.slice(0, 20).map((a) => (
-                  <tr key={a.id}>
-                    <td style={styles.td}>{a.exam_name}</td>
-                    <td style={styles.td}>{a.display_name}</td>
-                    <td style={styles.td}>{new Date(a.submitted_at).toLocaleString('ja-JP')}</td>
-                    {a.pending_reveal ? (
-                      <>
-                        <td style={styles.td} colSpan={2}>
-                          <span style={{ color: '#888' }}>提出済み（結果は試験終了後に表示）</span>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td style={styles.td}>{a.earned_points} / {a.total_points}</td>
-                        <td style={styles.td}>
-                          <span style={a.passed ? styles.pass : styles.fail}>
-                            {a.passed ? '合格' : '不合格'}
-                          </span>
-                        </td>
-                      </>
-                    )}
-                    <td style={styles.td}>
-                      <button style={styles.linkBtn} onClick={() => navigate(`/exams/result/${a.id}`)}>
-                        結果を見る
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </>
+      {activeTab === 'learning' ? (
+        (materialHistory.length > 0 || attemptsForTab.length > 0) && (
+          <>
+            <h2 style={styles.subTitle}>学習履歴</h2>
+
+            {materialHistory.length > 0 && (
+              <div style={styles.historyBlock}>
+                <h3 style={styles.h3}>教材の閲覧</h3>
+                <div style={styles.tableWrap}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>教材</th>
+                        <th style={styles.th}>進捗</th>
+                        <th style={styles.th}>最終閲覧</th>
+                        <th style={styles.th}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {materialHistory.map((r) => (
+                        <tr key={r.key}>
+                          <td style={styles.td}>{r.label}</td>
+                          <td style={styles.td}>{r.percent}%</td>
+                          <td style={styles.td}>{new Date(r.updatedAt).toLocaleString('ja-JP')}</td>
+                          <td style={styles.td}>
+                            <Link
+                              style={styles.linkBtn}
+                              to={`/exams/${encodeURIComponent(r.examId)}/materials/${encodeURIComponent(r.materialId)}`}
+                            >
+                              続きを見る
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {attemptsForTab.length > 0 && (
+              <div style={styles.historyBlock}>
+                <h3 style={styles.h3}>確認テストの受験履歴</h3>
+                <AttemptsTable rows={attemptsForTab} onShowResult={(id) => navigate(`/exams/result/${id}`)} />
+              </div>
+            )}
+          </>
+        )
+      ) : (
+        attemptsForTab.length > 0 && (
+          <>
+            <h2 style={styles.subTitle}>受験履歴</h2>
+            <AttemptsTable rows={attemptsForTab} onShowResult={(id) => navigate(`/exams/result/${id}`)} />
+          </>
+        )
       )}
+    </div>
+  );
+}
+
+function AttemptsTable({ rows, onShowResult }: { rows: AttemptSummary[]; onShowResult: (id: number) => void }) {
+  return (
+    <div style={styles.tableWrap}>
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>試験</th>
+            <th style={styles.th}>回答者</th>
+            <th style={styles.th}>提出日時</th>
+            <th style={styles.th}>得点</th>
+            <th style={styles.th}>判定</th>
+            <th style={styles.th}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.slice(0, 20).map((a) => (
+            <tr key={a.id}>
+              <td style={styles.td}>{a.exam_name}</td>
+              <td style={styles.td}>{a.display_name}</td>
+              <td style={styles.td}>{new Date(a.submitted_at).toLocaleString('ja-JP')}</td>
+              {a.pending_reveal ? (
+                <td style={styles.td} colSpan={2}>
+                  <span style={{ color: '#888' }}>提出済み（結果は試験終了後に表示）</span>
+                </td>
+              ) : (
+                <>
+                  <td style={styles.td}>{a.earned_points} / {a.total_points}</td>
+                  <td style={styles.td}>
+                    <span style={a.passed ? styles.pass : styles.fail}>
+                      {a.passed ? '合格' : '不合格'}
+                    </span>
+                  </td>
+                </>
+              )}
+              <td style={styles.td}>
+                <button style={styles.linkBtn} onClick={() => onShowResult(a.id)}>
+                  結果を見る
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -453,6 +539,8 @@ const styles: Record<string, React.CSSProperties> = {
   startBtn: { width: '100%', marginTop: 14, padding: '10px 0', border: 'none', borderRadius: 8, background: GRADIENT, color: DEEP_BLUE, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' },
   btnDisabled: { opacity: 0.5, cursor: 'not-allowed' },
   subTitle: { fontSize: 19, fontWeight: 700, color: DEEP_BLUE, marginTop: 40, marginBottom: 12 },
+  historyBlock: { marginTop: 18 },
+  h3: { fontSize: 14.5, fontWeight: 700, color: '#555', margin: '0 0 8px' },
   tableWrap: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13.5 },
   th: { background: DEEP_BLUE, color: '#fff', textAlign: 'left', padding: '9px 12px', fontWeight: 700, whiteSpace: 'nowrap' },
