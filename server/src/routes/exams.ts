@@ -163,6 +163,14 @@ examsRouter.put('/exams/:examId/materials/:materialId/progress', async (req, res
   const page = Math.min(Math.max(1, Math.trunc(Number(req.body?.page))), material.pages);
   if (!Number.isInteger(page)) return res.status(400).json({ error: 'bad page' });
 
+  const existing = (
+    await pool.query<{ viewed_pages: number[] }>(
+      `SELECT viewed_pages FROM material_progress WHERE user_id = $1 AND exam_id = $2 AND material_id = $3`,
+      [p.id, examId, materialId],
+    )
+  ).rows[0];
+  const isNewPage = !existing?.viewed_pages.includes(page);
+
   await pool.query(
     `INSERT INTO material_progress (user_id, exam_id, material_id, viewed_pages, last_page)
      VALUES ($1, $2, $3, ARRAY[$4]::int[], $4)
@@ -174,6 +182,15 @@ examsRouter.put('/exams/:examId/materials/:materialId/progress', async (req, res
        updated_at = now()`,
     [p.id, examId, materialId, page],
   );
+
+  // デイリー学習進捗・個人別推移で使う「新しく読んだページ」のログ。再訪問は記録しない
+  if (isNewPage) {
+    await pool.query(
+      `INSERT INTO material_progress_log (user_id, exam_id, material_id, page) VALUES ($1, $2, $3, $4)`,
+      [p.id, examId, materialId, page],
+    );
+  }
+
   res.json({ ok: true });
 });
 
