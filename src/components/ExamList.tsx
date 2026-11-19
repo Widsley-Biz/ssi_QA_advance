@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import {
   listExams,
   listAttempts,
   getMyMaterialProgress,
   type ExamSummary,
+  type ExamCategory,
   type AttemptSummary,
   type MaterialProgress,
 } from '../lib/exams';
@@ -13,13 +14,50 @@ const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const GRADIENT = 'linear-gradient(135deg, #50DAB0, #3DB7E4)';
 
+type Tab = ExamCategory;
+const TABS: Tab[] = ['learning', 'mock', 'certification'];
+
+const TAB_LABEL: Record<Tab, string> = {
+  learning: '学習',
+  mock: '模擬試験',
+  certification: '社内認定試験',
+};
+
+const TAB_TITLE: Record<Tab, string> = {
+  learning: '学習教材',
+  mock: '模擬試験',
+  certification: '社内認定試験',
+};
+
+const TAB_LEAD: Record<Tab, string> = {
+  learning: '動画・スライドで学ぶ教材です。閲覧したページは自動で記録され、何度でも見返せます。',
+  mock: '社内認定試験の予行演習です。何度でも受け直せます。提出すると採点結果と解説が表示されます。本番の試験ではありません。',
+  certification: 'ここは本番の社内認定試験です。受験期間・回数に制限がある場合があります。',
+};
+
+const TAB_EMPTY: Record<Tab, string> = {
+  learning: '学習できる教材がまだありません。',
+  mock: '受験できる模擬試験がまだありません。',
+  certification: '実施中の社内認定試験はありません。',
+};
+
+/** categoryが未設定(NULL)の過去データ向けフォールバック */
+function effectiveCategory(e: ExamSummary): Tab {
+  if (e.category) return e.category;
+  if (e.kind === 'material') return 'learning';
+  const isFormal = Boolean(e.opens_at || e.closes_at || e.max_attempts);
+  return isFormal ? 'certification' : 'mock';
+}
+
 /**
- * 模擬試験の一覧。ジャンル → 試験 の2階層。
- *   模擬試験 → Playwright社内試験 → セットA〜D
+ * 模擬試験・学習教材・社内認定試験の一覧。タブ(学習/模擬/社内認定試験) → ジャンル → 試験 の3階層。
+ *   模擬試験タブ → Playwright社内試験 → セットA〜D
  * 試験が増えても探せるように、名前・説明・ジャンルを対象とした検索を付けている。
+ * 検索中はタブを横断して全件から探す。
  */
 export default function ExamList() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [exams, setExams] = useState<ExamSummary[]>([]);
   const [attempts, setAttempts] = useState<AttemptSummary[]>([]);
   const [materialProgress, setMaterialProgress] = useState<MaterialProgress[]>([]);
@@ -27,6 +65,14 @@ export default function ExamList() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [closedGroups, setClosedGroups] = useState<Set<string>>(new Set());
+
+  const tabParam = searchParams.get('tab');
+  const activeTab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'learning';
+  const setActiveTab = (t: Tab) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev);
+    next.set('tab', t);
+    return next;
+  }, { replace: true });
 
   useEffect(() => {
     (async () => {
@@ -50,6 +96,14 @@ export default function ExamList() {
     return Math.round(((mine?.viewed_pages.length ?? 0) / pages) * 100);
   }
 
+  const tabCounts = useMemo(() => {
+    const counts: Record<Tab, number> = { learning: 0, mock: 0, certification: 0 };
+    for (const e of exams) counts[effectiveCategory(e)]++;
+    return counts;
+  }, [exams]);
+
+  const searching = query.trim().length > 0;
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return exams;
@@ -58,19 +112,24 @@ export default function ExamList() {
     );
   }, [exams, query]);
 
+  // 検索中はタブを無視して全件から探す。検索していないときだけタブで絞る
+  const visible = useMemo(
+    () => (searching ? filtered : filtered.filter((e) => effectiveCategory(e) === activeTab)),
+    [filtered, searching, activeTab],
+  );
+
   /** ジャンルごとにまとめる。group_name が空のものは「その他」 */
   const groups = useMemo(() => {
     const map = new Map<string, ExamSummary[]>();
-    for (const e of filtered) {
+    for (const e of visible) {
       const g = e.group_name?.trim() || 'その他';
       if (!map.has(g)) map.set(g, []);
       map.get(g)!.push(e);
     }
     return [...map.entries()];
-  }, [filtered]);
+  }, [visible]);
 
   // 既定は開いた状態。見出しクリックで閉じられる。検索中は常に開く
-  const searching = query.trim().length > 0;
   const isOpen = (g: string) => searching || !closedGroups.has(g);
   const toggle = (g: string) =>
     setClosedGroups((prev) => {
@@ -85,17 +144,29 @@ export default function ExamList() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>模擬試験</h1>
-      <p style={styles.lead}>
-        社内認定試験の予行演習です。<b>何度でも受け直せます。</b>
-        提出すると採点結果と解説が表示されます。本番の試験ではありません。
-      </p>
+      <h1 style={styles.title}>{searching ? '検索結果' : TAB_TITLE[activeTab]}</h1>
+      <p style={styles.lead}>{searching ? `全タブから「${query}」を含むものを探しています。` : TAB_LEAD[activeTab]}</p>
+
+      {!searching && (
+        <div style={styles.tabRow}>
+          {TABS.map((t) => (
+            <button
+              key={t}
+              onClick={() => setActiveTab(t)}
+              style={{ ...styles.tabBtn, ...(t === activeTab ? styles.tabBtnActive : {}) }}
+            >
+              {TAB_LABEL[t]}
+              <span style={styles.tabCount}>{tabCounts[t]}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={styles.searchRow}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="試験名・ジャンルで検索（例: Playwright、セットA）"
+          placeholder="名前・ジャンルで検索（例: Playwright、セットA、HTML基礎）"
           style={styles.search}
         />
         {searching && (
@@ -105,17 +176,18 @@ export default function ExamList() {
 
       {searching && (
         <div style={styles.hitCount}>
-          {filtered.length === 0 ? '該当する試験がありません' : `${filtered.length}件`}
+          {filtered.length === 0 ? '該当するものがありません' : `${filtered.length}件`}
         </div>
       )}
 
       {groups.length === 0 && !searching && (
-        <div style={styles.empty}>受験できる模擬試験がまだありません。</div>
+        <div style={styles.empty}>{TAB_EMPTY[activeTab]}</div>
       )}
 
       {groups.map(([group, items]) => {
         const open = isOpen(group);
         const totalAttempts = items.reduce((s, e) => s + Number(e.my_attempts ?? 0), 0);
+        const allMaterial = items.every((e) => e.kind === 'material');
         return (
           <div key={group} style={styles.group}>
             <button
@@ -125,8 +197,8 @@ export default function ExamList() {
               <span style={styles.caret}>{open ? '▾' : '▸'}</span>
               <span style={styles.groupName}>{group}</span>
               <span style={styles.groupMeta}>
-                {items.length}種
-                {totalAttempts > 0 && <> ・ 受験 {totalAttempts}回</>}
+                {allMaterial ? `${items.length}件` : `${items.length}種`}
+                {!allMaterial && totalAttempts > 0 && <> ・ 受験 {totalAttempts}回</>}
               </span>
             </button>
 
@@ -279,7 +351,7 @@ export default function ExamList() {
         );
       })}
 
-      {attempts.length > 0 && (
+      {activeTab !== 'learning' && attempts.length > 0 && (
         <>
           <h2 style={styles.subTitle}>受験履歴</h2>
           <div style={styles.tableWrap}>
@@ -346,7 +418,11 @@ const styles: Record<string, React.CSSProperties> = {
   page: { maxWidth: 1000, margin: '0 auto', padding: '32px 20px 64px', textAlign: 'left' },
   title: { fontSize: 28, fontWeight: 800, color: DEEP_BLUE, margin: 0 },
   lead: { fontSize: 15, color: '#444', lineHeight: 1.7, marginTop: 10 },
-  searchRow: { display: 'flex', gap: 8, marginTop: 22 },
+  tabRow: { display: 'flex', gap: 8, marginTop: 20, borderBottom: '1px solid #E2E8EC' },
+  tabBtn: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 16px', border: 'none', background: 'none', color: '#777', fontSize: 14.5, fontWeight: 700, cursor: 'pointer', borderBottom: '3px solid transparent', marginBottom: -1 },
+  tabBtnActive: { color: DEEP_BLUE, borderBottom: `3px solid ${CYAN}` },
+  tabCount: { fontSize: 11.5, fontWeight: 700, color: '#888', background: '#F0F4F6', borderRadius: 10, padding: '1px 7px' },
+  searchRow: { display: 'flex', gap: 8, marginTop: 18 },
   search: { flex: 1, padding: '11px 14px', fontSize: 14, border: '1px solid #D5DEE4', borderRadius: 8, outline: 'none', fontFamily: 'inherit' },
   clearBtn: { padding: '0 16px', border: '1px solid #D5DEE4', borderRadius: 8, background: '#fff', color: '#555', fontWeight: 700, cursor: 'pointer' },
   hitCount: { fontSize: 13, color: '#666', marginTop: 8 },

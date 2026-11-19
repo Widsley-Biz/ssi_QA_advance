@@ -33,12 +33,19 @@ async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
  */
 export type ExamKind = 'written' | 'practical' | 'material';
 
+/**
+ * 学習/模擬/社内認定試験のタブ分け用。NULLの場合はExamList側で
+ * kind・日程設定から推定する(過去データ・設定忘れへのフォールバック)。
+ */
+export type ExamCategory = 'learning' | 'mock' | 'certification';
+
 export interface ExamSummary {
   id: string;
   name: string;
   description: string;
   group_name: string;
   kind: ExamKind;
+  category: ExamCategory | null;
   pass_score: number;
   time_limit_min: number | null;
   is_published: boolean;

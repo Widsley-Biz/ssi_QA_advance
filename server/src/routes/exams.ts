@@ -75,7 +75,7 @@ examsRouter.get('/exams', async (req, res) => {
 
   const { rows } = await pool.query(
     `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
-            e.sort_order, e.is_published, e.kind,
+            e.sort_order, e.is_published, e.kind, e.category,
             e.opens_at, e.closes_at, e.max_attempts, e.materials,
             (SELECT count(*) FROM exam_targets t WHERE t.exam_id = e.id)::int AS target_count,
             (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)::int      AS question_count,
