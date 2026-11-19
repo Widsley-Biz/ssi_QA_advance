@@ -77,6 +77,8 @@ examsRouter.get('/exams', async (req, res) => {
     `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
             e.sort_order, e.is_published, e.kind, e.category,
             e.opens_at, e.closes_at, e.max_attempts, e.materials,
+            (e.guide IS NOT NULL) AS has_guide,
+            e.guide ->> 'button_label' AS guide_button_label,
             (SELECT count(*) FROM exam_targets t WHERE t.exam_id = e.id)::int AS target_count,
             (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)::int      AS question_count,
             (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id)::int AS total_points,
@@ -256,6 +258,30 @@ examsRouter.get('/exams/:examId/materials/:materialId/pages/:n', async (req, res
     console.error('material page load error', objectPath, err);
     res.status(502).json({ error: 'failed to load page image' });
   }
+});
+
+/**
+ * 教材・実技共通の案内ページ。文言とリンクはDBの guide(jsonb) にしか無いので、
+ * 直すときはSQLを流すだけでよく、デプロイは要らない。
+ *
+ * /practical と違い kind の制限は無い（kind='material' の「はじめにガイド」・
+ * 各回の後日演習課題の案内でも使うため）。guide が無い試験は404にする。
+ */
+examsRouter.get('/exams/:examId/guide', async (req, res) => {
+  const p = req.profile!;
+  if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
+
+  const exam = (await pool.query(
+    `SELECT id, name, description, group_name, kind, guide, is_published, opens_at, closes_at
+       FROM exams WHERE id = $1`,
+    [req.params.examId],
+  )).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+  const access = await checkExamAccess(exam, p);
+  if (!access.ok) return res.status(403).json({ error: access.reason });
+  if (!exam.guide) return res.status(404).json({ error: 'no guide for this exam' });
+
+  res.json({ exam });
 });
 
 /**
