@@ -38,7 +38,7 @@ export default function Header() {
       )}
       {user.role === 'board' && (
         <>
-          <Link to="/board" style={styles.navLink}>全社</Link>
+          <Link to="/board" style={styles.navLink}>ダッシュボード</Link>
           <Link to="/admin" style={styles.navLink}>管理</Link>
         </>
       )}
