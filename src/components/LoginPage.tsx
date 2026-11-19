@@ -18,6 +18,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string>('');
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState(false);
   const isProductionAuthMode = !!(import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
 
   const handleMockLogin = () => {
@@ -29,11 +30,13 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     if (!signInWithGoogle) return;
     setGoogleLoading(true);
+    setGoogleError(false);
     try {
       await signInWithGoogle();
       // Auth state change listener will handle navigation
     } catch {
       setGoogleLoading(false);
+      setGoogleError(true);
     }
   };
 
@@ -62,6 +65,11 @@ export default function LoginPage() {
               <GoogleIcon />
               {googleLoading ? 'ログイン中...' : 'Googleでログイン'}
             </button>
+            {googleError && (
+              <p style={{ fontSize: 12, color: '#c0185a', margin: '10px 0 0' }}>
+                ログインに失敗しました。もう一度お試しください。
+              </p>
+            )}
           </>
         ) : (
           /* Demo mode: user selector */
