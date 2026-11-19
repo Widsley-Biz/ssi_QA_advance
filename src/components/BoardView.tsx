@@ -30,6 +30,33 @@ function profileTeamIds(p: Profile): (number | string)[] {
   return p.team_id != null ? [p.team_id] : [];
 }
 
+type SectionKey = 'skillmap' | 'courseProgress' | 'daily' | 'charts' | 'admin';
+const COLLAPSE_STORAGE_KEY = 'dashboard-collapsed-sections';
+
+function loadCollapsedSections(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(COLLAPSE_STORAGE_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function SectionHeader({ title, note, collapsed, onToggle }: {
+  title: string; note?: string; collapsed: boolean; onToggle: () => void;
+}) {
+  return (
+    <div style={styles.sectionHead}>
+      <h2 style={styles.sectionTitle}>{title}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {note && <span style={styles.sectionNote}>{note}</span>}
+        <span style={styles.collapseToggle} onClick={onToggle}>
+          {collapsed ? '展開 ▸' : '折りたたむ ▾'}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function BoardView() {
   const { user } = useAuth();
 
@@ -49,6 +76,19 @@ export default function BoardView() {
   const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<number | 'all' | 'unassigned'>('all');
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(loadCollapsedSections);
+
+  const toggleSection = (key: SectionKey) => {
+    setCollapsedSections((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(COLLAPSE_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // プライベートウィンドウ等で失敗しても表示には影響しない
+      }
+      return next;
+    });
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -380,10 +420,13 @@ export default function BoardView() {
 
         {/* カード1: スキルマップ達成率 */}
         <div style={styles.section}>
-          <div style={styles.sectionHead}>
-            <h2 style={styles.sectionTitle}>スキルマップ達成率</h2>
-            <span style={styles.sectionNote}>氏名クリックで個人推移</span>
-          </div>
+          <SectionHeader
+            title="スキルマップ達成率"
+            note="氏名クリックで個人推移"
+            collapsed={!!collapsedSections.skillmap}
+            onToggle={() => toggleSection('skillmap')}
+          />
+          {!collapsedSections.skillmap && (
           <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -477,14 +520,18 @@ export default function BoardView() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
 
         {/* カード2: 講座学習進捗 */}
         <div style={styles.section}>
-          <div style={styles.sectionHead}>
-            <h2 style={styles.sectionTitle}>講座学習進捗</h2>
-            <span style={styles.sectionNote}>旧「試験レポート」。氏名クリックで個人推移</span>
-          </div>
+          <SectionHeader
+            title="講座学習進捗"
+            note="旧「試験レポート」。氏名クリックで個人推移"
+            collapsed={!!collapsedSections.courseProgress}
+            onToggle={() => toggleSection('courseProgress')}
+          />
+          {!collapsedSections.courseProgress && (
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
@@ -541,15 +588,18 @@ export default function BoardView() {
               </tbody>
             </table>
           </div>
+          )}
         </div>
 
         {/* カード3: デイリー学習進捗 */}
         <div style={styles.section}>
-          <div style={styles.sectionHead}>
-            <h2 style={styles.sectionTitle}>デイリー学習進捗</h2>
-            <span style={styles.sectionNote}>氏名クリックで個人推移</span>
-          </div>
-          {feedGroups.length === 0 ? (
+          <SectionHeader
+            title="デイリー学習進捗"
+            note="氏名クリックで個人推移"
+            collapsed={!!collapsedSections.daily}
+            onToggle={() => toggleSection('daily')}
+          />
+          {!collapsedSections.daily && (feedGroups.length === 0 ? (
             <p style={{ color: '#999', fontSize: 13 }}>直近90日に記録された活動はありません</p>
           ) : (
             feedGroups.map((grp) => (
@@ -585,45 +635,59 @@ export default function BoardView() {
                 ))}
               </div>
             ))
-          )}
+          ))}
         </div>
 
-        <div style={styles.chartsRow}>
-          {activeCourse?.type === 'leveled' && levelDistribution.length > 0 && (
-            <div style={{ ...styles.section, flex: 1 }}>
-              <h2 style={styles.sectionTitle}>レベル別人数サマリー</h2>
+        <div style={styles.section}>
+          <SectionHeader
+            title="チーム別グラフ"
+            collapsed={!!collapsedSections.charts}
+            onToggle={() => toggleSection('charts')}
+          />
+          {!collapsedSections.charts && (
+          <div style={styles.chartsRow}>
+            {activeCourse?.type === 'leveled' && levelDistribution.length > 0 && (
+              <div style={{ flex: 1 }}>
+                <h3 style={styles.subChartTitle}>レベル別人数サマリー</h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={levelDistribution}>
+                    <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={36}>
+                      {levelDistribution.map((_, i) => (
+                        <Cell key={i} fill={SHADES[i % SHADES.length]} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
+            <div style={{ flex: 1 }}>
+              <h3 style={styles.subChartTitle}>チーム別平均達成率</h3>
               <ResponsiveContainer width="100%" height={220}>
-                <BarChart data={levelDistribution}>
+                <BarChart data={teamAvgData}>
                   <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={36}>
-                    {levelDistribution.map((_, i) => (
-                      <Cell key={i} fill={SHADES[i % SHADES.length]} />
-                    ))}
-                  </Bar>
+                  <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+                  <Tooltip formatter={(v) => `${v}%`} />
+                  <Bar dataKey="avg" fill={CYAN} radius={[4, 4, 0, 0]} barSize={36} />
                 </BarChart>
               </ResponsiveContainer>
+              <p style={{ fontSize: 11, color: '#9fb3bd', marginTop: 8 }}>チーム未所属は上の表で個別に確認できます(平均には含めません)</p>
             </div>
-          )}
-
-          <div style={{ ...styles.section, flex: 1 }}>
-            <h2 style={styles.sectionTitle}>チーム別平均達成率</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={teamAvgData}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                <Tooltip formatter={(v) => `${v}%`} />
-                <Bar dataKey="avg" fill={CYAN} radius={[4, 4, 0, 0]} barSize={36} />
-              </BarChart>
-            </ResponsiveContainer>
-            <p style={{ fontSize: 11, color: '#9fb3bd', marginTop: 8 }}>チーム未所属は上の表で個別に確認できます(平均には含めません)</p>
           </div>
+          )}
         </div>
 
         {/* Admin */}
         <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>管理</h2>
+          <SectionHeader
+            title="管理"
+            collapsed={!!collapsedSections.admin}
+            onToggle={() => toggleSection('admin')}
+          />
+          {!collapsedSections.admin && (
           <div style={styles.adminPlaceholder}>
             <div style={styles.adminCard}>
               <h3 style={styles.adminCardTitle}>ユーザー管理</h3>
@@ -641,6 +705,7 @@ export default function BoardView() {
               <div style={styles.adminCount}>{courses.length}コース</div>
             </div>
           </div>
+          )}
         </div>
       </div>
     </div>
@@ -783,6 +848,20 @@ const styles: Record<string, React.CSSProperties> = {
   sectionNote: {
     fontSize: 11,
     color: '#9fb3bd',
+  },
+  collapseToggle: {
+    cursor: 'pointer',
+    userSelect: 'none' as const,
+    fontSize: 12,
+    fontWeight: 700,
+    color: CYAN,
+    whiteSpace: 'nowrap' as const,
+  },
+  subChartTitle: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: DEEP_BLUE,
+    margin: '0 0 12px',
   },
   dayGroupLabel: {
     fontSize: 12,
