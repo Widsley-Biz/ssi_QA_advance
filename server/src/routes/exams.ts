@@ -132,7 +132,7 @@ examsRouter.get('/exams/:examId/materials/progress', requireRole('board'), async
             mp.material_id, mp.viewed_pages, mp.last_page, mp.updated_at
        FROM profiles pr
        LEFT JOIN material_progress mp ON mp.user_id = pr.id AND mp.exam_id = $1
-      WHERE pr.role <> 'retired'
+      WHERE pr.role NOT IN ('retired', 'board')
       ORDER BY pr.display_name`,
     [req.params.examId],
   );
@@ -163,6 +163,14 @@ examsRouter.put('/exams/:examId/materials/:materialId/progress', async (req, res
   const page = Math.min(Math.max(1, Math.trunc(Number(req.body?.page))), material.pages);
   if (!Number.isInteger(page)) return res.status(400).json({ error: 'bad page' });
 
+  const existing = (
+    await pool.query<{ viewed_pages: number[] }>(
+      `SELECT viewed_pages FROM material_progress WHERE user_id = $1 AND exam_id = $2 AND material_id = $3`,
+      [p.id, examId, materialId],
+    )
+  ).rows[0];
+  const isNewPage = !existing?.viewed_pages.includes(page);
+
   await pool.query(
     `INSERT INTO material_progress (user_id, exam_id, material_id, viewed_pages, last_page)
      VALUES ($1, $2, $3, ARRAY[$4]::int[], $4)
@@ -174,6 +182,16 @@ examsRouter.put('/exams/:examId/materials/:materialId/progress', async (req, res
        updated_at = now()`,
     [p.id, examId, materialId, page],
   );
+
+  // デイリー学習進捗・個人別推移で使う「新しく読んだページ」のログ。再訪問は記録しない
+  if (isNewPage) {
+    await pool.query(
+      `INSERT INTO material_progress_log (user_id, exam_id, material_id, page) VALUES ($1, $2, $3, $4)
+       ON CONFLICT (user_id, exam_id, material_id, page) DO NOTHING`,
+      [p.id, examId, materialId, page],
+    );
+  }
+
   res.json({ ok: true });
 });
 
@@ -608,7 +626,7 @@ examsRouter.get('/exams/report', requireRole('board'), async (_req, res) => {
                     count(*) FILTER (WHERE email = p.email)::int AS mine
                FROM exam_targets WHERE exam_id = e.id
             ) t ON true
-      WHERE p.role <> 'retired'
+      WHERE p.role NOT IN ('retired', 'board')
         -- kind='material'はテストを持たない教材のみコースなので、
         -- 永久に「未受験」になる列をマトリクスに残さないよう除外する
         AND e.kind <> 'material'

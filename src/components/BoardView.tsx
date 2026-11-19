@@ -3,12 +3,19 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { useAuth } from '../context/AuthContext';
 import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, isInTeam } from '../lib/data';
 import { calcRate, calcReachedLevel } from '../lib/score';
+import { getExamReport, listExams, type ExamReportCell, type ExamSummary } from '../lib/exams';
+import { fetchMaterialsSummary, fetchDailyActivity, type MaterialsSummaryRow, type DailyActivity } from '../lib/dashboard';
+import DrilldownChart from './DrilldownChart';
 import type { Profile, Team, Course, Skill, Level, Assessment, Answer } from '../types';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
+const MAGENTA = '#E21776';
 const SHADES = ['#50DAB0', '#3DB7E4', '#03202F', '#E21776'];
+
+/** 座学模擬・実技模擬の列はこのグループに限定する(現状アプリ内で座学/実技に分かれているのはPlaywrightのみ) */
+const WRITTEN_PRACTICAL_GROUP = 'Playwright社内試験模擬（座学・実技）';
 
 interface ScoreRow {
   id: string;
@@ -16,6 +23,11 @@ interface ScoreRow {
   teamName: string;
   courseRates: Record<string, { rate: number; level: string }>;
   lastSubmitted: string;
+}
+
+function profileTeamIds(p: Profile): (number | string)[] {
+  if (p.team_ids) return p.team_ids;
+  return p.team_id != null ? [p.team_id] : [];
 }
 
 export default function BoardView() {
@@ -29,9 +41,14 @@ export default function BoardView() {
   const [levels, setLevels] = useState<Level[]>([]);
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [answersMap, setAnswersMap] = useState<Record<number, Answer[]>>({});
+  const [examReport, setExamReport] = useState<ExamReportCell[]>([]);
+  const [examKindMap, setExamKindMap] = useState<Map<string, ExamSummary['kind']>>(new Map());
+  const [materialsSummary, setMaterialsSummary] = useState<MaterialsSummaryRow[]>([]);
+  const [dailyActivity, setDailyActivity] = useState<DailyActivity | null>(null);
 
   const [selectedCourse, setSelectedCourse] = useState<string>('');
-  const [selectedTeam, setSelectedTeam] = useState<number | 'all'>('all');
+  const [selectedTeam, setSelectedTeam] = useState<number | 'all' | 'unassigned'>('all');
+  const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -46,7 +63,8 @@ export default function BoardView() {
       ]);
       setCourses(c);
       setTeams(t);
-      setProfiles(p); // already excludes retired in data layer
+      // 管理者(role=board)は進捗・集計の対象外。退職者は既にdata層で除外済み
+      setProfiles(p.filter((pr) => pr.role !== 'board'));
       setSkills(s);
       setLevels(l);
       setAssessments(a);
@@ -55,8 +73,25 @@ export default function BoardView() {
         setSelectedCourse(c[0].id);
       }
 
-      // Load answers for all submitted assessments
-      const submitted = a.filter(as => as.status === 'submitted');
+      // 試験レポート・教材進捗・デイリー活動はexams.ts系API専用(デモモード非対応)。
+      // デモモードやAPI未設定時でもスキルマップ側は使えるよう、ここだけ個別にcatchする
+      try {
+        const [report, exams, matSummary, activity] = await Promise.all([
+          getExamReport(),
+          listExams(),
+          fetchMaterialsSummary(),
+          fetchDailyActivity(90),
+        ]);
+        setExamReport(report);
+        setExamKindMap(new Map(exams.map((e) => [e.id, e.kind])));
+        setMaterialsSummary(matSummary);
+        setDailyActivity(activity);
+      } catch (err) {
+        console.error('Failed to load exam/material dashboard data:', err);
+        setDailyActivity({ examEvents: [], skillmapEvents: [], materialDaily: [], recordStart: null });
+      }
+
+      const submitted = a.filter((as) => as.status === 'submitted');
       const ansMap: Record<number, Answer[]> = {};
       await Promise.all(
         submitted.map(async (as) => {
@@ -79,7 +114,7 @@ export default function BoardView() {
     return <div style={styles.container}><p>アクセス権限がありません</p></div>;
   }
 
-  if (loading) {
+  if (loading || !dailyActivity) {
     return (
       <div style={styles.container}>
         <div style={styles.content}>
@@ -92,15 +127,24 @@ export default function BoardView() {
     );
   }
 
+  const unassignedProfiles = profiles.filter((p) => profileTeamIds(p).length === 0);
+
   const filteredProfiles = selectedTeam === 'all'
     ? profiles
-    : profiles.filter(p => isInTeam(p, selectedTeam));
+    : selectedTeam === 'unassigned'
+      ? unassignedProfiles
+      : profiles.filter((p) => isInTeam(p, selectedTeam));
 
   const activeCourse = courses.find(c => c.id === selectedCourse);
 
-  // Build score rows
-  const scoreRows: ScoreRow[] = filteredProfiles.map((p) => {
+  const teamNameOf = (p: Profile): string => {
+    if (profileTeamIds(p).length === 0) return '未所属';
     const team = teams.find(t => t.id === p.team_id);
+    return team?.name ?? '-';
+  };
+
+  // ---- スキルマップ達成率 ----
+  const scoreRows: ScoreRow[] = filteredProfiles.map((p) => {
     const courseRates: ScoreRow['courseRates'] = {};
     let latestDate = '';
 
@@ -130,7 +174,7 @@ export default function BoardView() {
     return {
       id: p.id,
       name: p.display_name,
-      teamName: team?.name ?? '-',
+      teamName: teamNameOf(p),
       courseRates,
       lastSubmitted: latestDate
         ? new Date(latestDate).toLocaleDateString('ja-JP')
@@ -138,7 +182,6 @@ export default function BoardView() {
     };
   });
 
-  // Level distribution for selected course
   const levelDistribution = activeCourse?.type === 'leveled'
     ? (() => {
         const courseLevels = levels.filter(l => l.course_id === selectedCourse);
@@ -163,7 +206,6 @@ export default function BoardView() {
       })()
     : [];
 
-  // Team average rates for selected course
   const teamAvgData = teams.map((team) => {
     const members = profiles.filter(p => isInTeam(p, team.id));
     const courseSkills = skills.filter(s => s.course_id === selectedCourse);
@@ -178,12 +220,150 @@ export default function BoardView() {
     return { name: team.name, avg };
   });
 
+  // ---- 講座学習進捗(座学模擬・実技模擬・教材) ----
+  const materialGroupNames = Array.from(new Set(materialsSummary.map((r) => r.group_name))).sort();
+
+  function writtenBadgeFor(userId: string) {
+    const cells = examReport.filter(
+      (c) => c.user_id === userId && c.group_name === WRITTEN_PRACTICAL_GROUP &&
+        examKindMap.get(c.exam_id) === 'written' && !c.excluded && c.attempt_id != null,
+    );
+    if (cells.length === 0) return { label: '未受験', bg: '#f0f0f0', color: '#888' };
+    const best = cells.reduce((a, b) => ((b.earned_points ?? 0) > (a.earned_points ?? 0) ? b : a));
+    return best.passed
+      ? { label: `${best.earned_points}点・合格`, bg: '#E8F7F1', color: '#0a7a5a' }
+      : { label: `${best.earned_points}点・不合格`, bg: '#FDEBEF', color: '#c0185a' };
+  }
+
+  function practicalBadgeFor(userId: string) {
+    const submitted = examReport.some(
+      (c) => c.user_id === userId && c.group_name === WRITTEN_PRACTICAL_GROUP &&
+        examKindMap.get(c.exam_id) === 'practical' && !c.excluded && c.attempt_id != null,
+    );
+    return submitted
+      ? { label: '提出済み', bg: '#E8F7F1', color: '#0a7a5a' }
+      : { label: '未提出', bg: '#f0f0f0', color: '#888' };
+  }
+
+  function materialsPctFor(userId: string, groupName: string): number {
+    const row = materialsSummary.find((r) => r.user_id === userId && r.group_name === groupName);
+    if (!row || row.total_pages === 0) return 0;
+    return Math.round((row.viewed_pages / row.total_pages) * 100);
+  }
+
+  function lastExamUpdateFor(userId: string): string {
+    const dates = examReport
+      .filter((c) => c.user_id === userId && c.group_name === WRITTEN_PRACTICAL_GROUP && c.submitted_at)
+      .map((c) => new Date(c.submitted_at as string).getTime());
+    if (dates.length === 0) return '-';
+    return new Date(Math.max(...dates)).toLocaleDateString('ja-JP');
+  }
+
+  // ---- KPIタイル ----
+  const writtenAttempted = filteredProfiles.filter((p) => writtenBadgeFor(p.id).label !== '未受験');
+  const writtenPassed = writtenAttempted.filter((p) => writtenBadgeFor(p.id).label.includes('合格'));
+  const practicalSubmittedCount = filteredProfiles.filter((p) => practicalBadgeFor(p.id).label === '提出済み').length;
+  const materialsAvgPct = (() => {
+    const pcts = filteredProfiles.flatMap((p) => materialGroupNames.map((g) => materialsPctFor(p.id, g)));
+    return pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : 0;
+  })();
+
+  // ---- デイリー学習進捗 ----
+  const todayStr = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
+  const yesterdayStr = (() => {
+    const d = new Date(`${todayStr}T00:00:00+09:00`);
+    d.setDate(d.getDate() - 1);
+    return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(d);
+  })();
+
+  type FeedEvent = { userId: string; name: string; team: string; day: string; text: string; dot: string };
+  const filteredIds = new Set(filteredProfiles.map((p) => p.id));
+  const feedEvents: FeedEvent[] = [
+    ...dailyActivity.examEvents
+      .filter((e) => filteredIds.has(e.user_id))
+      .map((e) => ({
+        userId: e.user_id, name: e.display_name, team: teamNameOf(profiles.find((p) => p.id === e.user_id) ?? ({} as Profile)),
+        day: e.day,
+        text: e.kind === 'practical' ? `${e.exam_name}のPRを提出` : `${e.exam_name}に${e.passed ? '合格' : '不合格'}(${e.earned_points}点)`,
+        dot: e.kind === 'practical' ? CYAN : e.passed ? '#0a7a5a' : '#c0185a',
+      })),
+    ...dailyActivity.skillmapEvents
+      .filter((e) => filteredIds.has(e.user_id))
+      .map((e) => ({
+        userId: e.user_id, name: e.display_name, team: teamNameOf(profiles.find((p) => p.id === e.user_id) ?? ({} as Profile)),
+        day: e.day, text: `スキルマップ「${e.course_name}」を提出`, dot: MAGENTA,
+      })),
+    ...dailyActivity.materialDaily
+      .filter((r) => filteredIds.has(r.user_id))
+      .map((r) => {
+        const p = profiles.find((pr) => pr.id === r.user_id);
+        return {
+          userId: r.user_id, name: p?.display_name ?? r.user_id, team: p ? teamNameOf(p) : '-',
+          day: r.day, text: `教材を${r.pages}ページ新しく既読`, dot: SEA_GREEN,
+        };
+      }),
+  ].sort((a, b) => (a.day < b.day ? 1 : -1));
+
+  const feedGroups = [
+    { label: `今日(${todayStr.slice(5)})`, events: feedEvents.filter((e) => e.day === todayStr) },
+    { label: `前日(${yesterdayStr.slice(5)})`, events: feedEvents.filter((e) => e.day === yesterdayStr) },
+    { label: 'それ以前', events: feedEvents.filter((e) => e.day < yesterdayStr) },
+  ].filter((g) => g.events.length > 0);
+
+  const selectedProfile = selectedPerson ? profiles.find((p) => p.id === selectedPerson) : null;
+
   return (
     <div style={styles.container}>
       <div style={styles.content}>
-        <h1 style={styles.title}>全社ダッシュボード</h1>
+        <h1 style={styles.title}>ダッシュボード</h1>
+        <p style={styles.subtitle}>管理者限定</p>
+
+        {/* KPIタイル */}
+        <div style={styles.kpiRow}>
+          <div style={styles.kpiCard}>
+            <div style={styles.kpiNumber}>{profiles.length}<span style={styles.kpiUnit}>名</span></div>
+            <div style={styles.kpiLabel}>受講者数</div>
+            <div style={styles.kpiNote}>管理者は除く・未所属含む</div>
+          </div>
+          <div style={{ ...styles.kpiCard, border: `1px solid ${MAGENTA}40` }}>
+            <div style={{ ...styles.kpiNumber, color: MAGENTA }}>{unassignedProfiles.length}<span style={styles.kpiUnit}>名</span></div>
+            <div style={styles.kpiLabel}>チーム未所属</div>
+          </div>
+          <div style={styles.kpiCard}>
+            <div style={{ ...styles.kpiNumber, color: '#0a7a5a' }}>{writtenPassed.length}<span style={styles.kpiUnit}>/{writtenAttempted.length} 合格</span></div>
+            <div style={styles.kpiLabel}>座学模擬</div>
+            <div style={styles.kpiNote}>受験済みのうち合格した人数</div>
+          </div>
+          <div style={styles.kpiCard}>
+            <div style={styles.kpiNumber}>{practicalSubmittedCount}<span style={styles.kpiUnit}>/{filteredProfiles.length} 提出</span></div>
+            <div style={styles.kpiLabel}>実技模擬</div>
+          </div>
+          <div style={styles.kpiCard}>
+            <div style={styles.kpiNumber}>{materialsAvgPct}<span style={styles.kpiUnit}>%</span></div>
+            <div style={styles.kpiLabel}>教材(スライド)閲覧率平均</div>
+            <div style={styles.kpiNote}>動画は対象外</div>
+          </div>
+        </div>
 
         <div style={styles.filterRow}>
+          <div>
+            <label style={styles.filterLabel}>チーム:</label>
+            <span
+              onClick={() => setSelectedTeam('all')}
+              style={{ ...styles.chip, ...(selectedTeam === 'all' ? styles.chipActive : {}) }}
+            >全チーム</span>
+            {teams.map((t) => (
+              <span
+                key={t.id}
+                onClick={() => setSelectedTeam(t.id)}
+                style={{ ...styles.chip, ...(selectedTeam === t.id ? styles.chipActive : {}) }}
+              >{t.name}</span>
+            ))}
+            <span
+              onClick={() => setSelectedTeam('unassigned')}
+              style={{ ...styles.chip, ...(selectedTeam === 'unassigned' ? styles.chipActive : {}) }}
+            >未所属</span>
+          </div>
           <div>
             <label style={styles.filterLabel}>コース:</label>
             <select
@@ -196,24 +376,14 @@ export default function BoardView() {
               ))}
             </select>
           </div>
-          <div>
-            <label style={styles.filterLabel}>チーム:</label>
-            <select
-              value={selectedTeam}
-              onChange={(e) => setSelectedTeam(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-              style={styles.select}
-            >
-              <option value="all">全チーム</option>
-              {teams.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
         </div>
 
-        {/* Score table */}
+        {/* カード1: スキルマップ達成率 */}
         <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>全社得点一覧</h2>
+          <div style={styles.sectionHead}>
+            <h2 style={styles.sectionTitle}>スキルマップ達成率</h2>
+            <span style={styles.sectionNote}>氏名クリックで個人推移</span>
+          </div>
           <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -252,14 +422,31 @@ export default function BoardView() {
                   </tr>
                 ) : (
                   scoreRows.map((row) => (
-                    <tr key={row.id} style={styles.tr}>
-                      <td style={{ ...styles.tdSticky, fontWeight: 600, color: DEEP_BLUE }}>{row.name}</td>
-                      <td style={styles.td}>{row.teamName}</td>
-                      {courses.map(c => {
-                        const cr = row.courseRates[c.id];
-                        return c.type === 'leveled' ? (
-                          <React.Fragment key={c.id}>
-                            <td style={styles.td}>
+                    <React.Fragment key={row.id}>
+                      <tr style={styles.tr}>
+                        <td style={{ ...styles.tdSticky, ...styles.nameLink, fontWeight: 600, color: DEEP_BLUE }}
+                          onClick={() => setSelectedPerson(selectedPerson === row.id ? null : row.id)}>
+                          {row.name}
+                        </td>
+                        <td style={{ ...styles.td, color: row.teamName === '未所属' ? MAGENTA : '#333' }}>{row.teamName}</td>
+                        {courses.map(c => {
+                          const cr = row.courseRates[c.id];
+                          return c.type === 'leveled' ? (
+                            <React.Fragment key={c.id}>
+                              <td style={styles.td}>
+                                <div style={styles.rateCell}>
+                                  <div style={styles.rateBar}>
+                                    <div style={{ ...styles.rateBarFill, width: `${cr?.rate ?? 0}%` }} />
+                                  </div>
+                                  <span style={styles.rateText}>{cr?.rate ?? 0}%</span>
+                                </div>
+                              </td>
+                              <td style={styles.td}>
+                                <span style={styles.levelBadge}>{cr?.level ?? '-'}</span>
+                              </td>
+                            </React.Fragment>
+                          ) : (
+                            <td key={c.id} style={styles.td}>
                               <div style={styles.rateCell}>
                                 <div style={styles.rateBar}>
                                   <div style={{ ...styles.rateBarFill, width: `${cr?.rate ?? 0}%` }} />
@@ -267,28 +454,138 @@ export default function BoardView() {
                                 <span style={styles.rateText}>{cr?.rate ?? 0}%</span>
                               </div>
                             </td>
-                            <td style={styles.td}>
-                              <span style={styles.levelBadge}>{cr?.level ?? '-'}</span>
-                            </td>
-                          </React.Fragment>
-                        ) : (
-                          <td key={c.id} style={styles.td}>
-                            <div style={styles.rateCell}>
-                              <div style={styles.rateBar}>
-                                <div style={{ ...styles.rateBarFill, width: `${cr?.rate ?? 0}%` }} />
-                              </div>
-                              <span style={styles.rateText}>{cr?.rate ?? 0}%</span>
-                            </div>
+                          );
+                        })}
+                        <td style={styles.td}>{row.lastSubmitted}</td>
+                      </tr>
+                      {selectedPerson === row.id && selectedProfile && (
+                        <tr>
+                          <td colSpan={99} style={{ padding: '8px 4px 16px' }}>
+                            <DrilldownChart
+                              userId={row.id}
+                              displayName={row.name}
+                              teamLabel={row.teamName}
+                              activity={dailyActivity}
+                              onClose={() => setSelectedPerson(null)}
+                            />
                           </td>
-                        );
-                      })}
-                      <td style={styles.td}>{row.lastSubmitted}</td>
-                    </tr>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* カード2: 講座学習進捗 */}
+        <div style={styles.section}>
+          <div style={styles.sectionHead}>
+            <h2 style={styles.sectionTitle}>講座学習進捗</h2>
+            <span style={styles.sectionNote}>旧「試験レポート」。氏名クリックで個人推移</span>
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>氏名</th>
+                  <th style={styles.th}>チーム</th>
+                  <th style={styles.th}>座学模擬</th>
+                  <th style={styles.th}>実技模擬</th>
+                  {materialGroupNames.map((g) => (
+                    <th key={g} style={styles.th}>{g}</th>
+                  ))}
+                  <th style={styles.th}>最終更新</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredProfiles.map((p) => {
+                  const written = writtenBadgeFor(p.id);
+                  const practical = practicalBadgeFor(p.id);
+                  return (
+                    <React.Fragment key={p.id}>
+                      <tr style={styles.tr}>
+                        <td style={{ ...styles.td, ...styles.nameLink, fontWeight: 600, color: DEEP_BLUE }}
+                          onClick={() => setSelectedPerson(selectedPerson === p.id ? null : p.id)}>
+                          {p.display_name}
+                        </td>
+                        <td style={{ ...styles.td, color: teamNameOf(p) === '未所属' ? MAGENTA : '#333' }}>{teamNameOf(p)}</td>
+                        <td style={styles.td}>
+                          <span style={{ ...styles.badge, background: written.bg, color: written.color }}>{written.label}</span>
+                        </td>
+                        <td style={styles.td}>
+                          <span style={{ ...styles.badge, background: practical.bg, color: practical.color }}>{practical.label}</span>
+                        </td>
+                        {materialGroupNames.map((g) => (
+                          <td key={g} style={styles.td}>{materialsPctFor(p.id, g)}%</td>
+                        ))}
+                        <td style={{ ...styles.td, color: '#999' }}>{lastExamUpdateFor(p.id)}</td>
+                      </tr>
+                      {selectedPerson === p.id && (
+                        <tr>
+                          <td colSpan={99} style={{ padding: '8px 4px 16px' }}>
+                            <DrilldownChart
+                              userId={p.id}
+                              displayName={p.display_name}
+                              teamLabel={teamNameOf(p)}
+                              activity={dailyActivity}
+                              onClose={() => setSelectedPerson(null)}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* カード3: デイリー学習進捗 */}
+        <div style={styles.section}>
+          <div style={styles.sectionHead}>
+            <h2 style={styles.sectionTitle}>デイリー学習進捗</h2>
+            <span style={styles.sectionNote}>氏名クリックで個人推移</span>
+          </div>
+          {feedGroups.length === 0 ? (
+            <p style={{ color: '#999', fontSize: 13 }}>直近90日に記録された活動はありません</p>
+          ) : (
+            feedGroups.map((grp) => (
+              <div key={grp.label}>
+                <span style={styles.dayGroupLabel}>{grp.label}</span>
+                {grp.events.map((ev, i) => (
+                  <React.Fragment key={`${ev.userId}-${i}`}>
+                    <div style={styles.feedRow}>
+                      <span style={{ ...styles.feedDot, background: ev.dot }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <span
+                          style={{ ...styles.nameLink, fontSize: 13, fontWeight: 700, color: DEEP_BLUE }}
+                          onClick={() => setSelectedPerson(selectedPerson === ev.userId ? null : ev.userId)}
+                        >
+                          {ev.name}
+                        </span>
+                        <span style={{ fontSize: 11, color: '#9fb3bd', marginLeft: 6 }}>{ev.team}</span>
+                        <div style={{ fontSize: 12, color: '#555', marginTop: 1 }}>{ev.text}</div>
+                      </div>
+                    </div>
+                    {selectedPerson === ev.userId && (
+                      <div style={{ padding: '0 0 16px 22px' }}>
+                        <DrilldownChart
+                          userId={ev.userId}
+                          displayName={ev.name}
+                          teamLabel={ev.team}
+                          activity={dailyActivity}
+                          onClose={() => setSelectedPerson(null)}
+                        />
+                      </div>
+                    )}
+                  </React.Fragment>
+                ))}
+              </div>
+            ))
+          )}
         </div>
 
         <div style={styles.chartsRow}>
@@ -320,6 +617,7 @@ export default function BoardView() {
                 <Bar dataKey="avg" fill={CYAN} radius={[4, 4, 0, 0]} barSize={36} />
               </BarChart>
             </ResponsiveContainer>
+            <p style={{ fontSize: 11, color: '#9fb3bd', marginTop: 8 }}>チーム未所属は上の表で個別に確認できます(平均には含めません)</p>
           </div>
         </div>
 
@@ -330,7 +628,7 @@ export default function BoardView() {
             <div style={styles.adminCard}>
               <h3 style={styles.adminCardTitle}>ユーザー管理</h3>
               <p style={styles.adminCardDesc}>ユーザーの追加・編集・ロール変更</p>
-              <div style={styles.adminCount}>{profiles.length}名</div>
+              <div style={styles.adminCount}>{profiles.length}名(受講者)</div>
             </div>
             <div style={styles.adminCard}>
               <h3 style={styles.adminCardTitle}>チーム管理</h3>
@@ -362,7 +660,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 22,
     fontWeight: 800,
     color: DEEP_BLUE,
-    marginBottom: 20,
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: '#6b828c',
+    marginBottom: 16,
   },
   loadingBox: {
     display: 'flex',
@@ -379,11 +682,46 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '50%',
     animation: 'spin 0.8s linear infinite',
   },
+  kpiRow: {
+    display: 'flex',
+    gap: 14,
+    flexWrap: 'wrap' as const,
+    margin: '4px 0 20px',
+  },
+  kpiCard: {
+    flex: '1 1 190px',
+    background: '#fff',
+    border: '1px solid #e1ebee',
+    borderRadius: 12,
+    padding: '14px 16px',
+  },
+  kpiNumber: {
+    fontSize: 24,
+    fontWeight: 800,
+    color: DEEP_BLUE,
+  },
+  kpiUnit: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#6b828c',
+    marginLeft: 2,
+  },
+  kpiLabel: {
+    fontSize: 12,
+    color: '#6b828c',
+    marginTop: 2,
+  },
+  kpiNote: {
+    fontSize: 10,
+    color: '#9fb3bd',
+    marginTop: 4,
+  },
   filterRow: {
     display: 'flex',
     gap: 20,
     marginBottom: 24,
     flexWrap: 'wrap' as const,
+    alignItems: 'center',
   },
   filterLabel: {
     fontSize: 14,
@@ -398,6 +736,29 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 8,
     background: '#fff',
   },
+  chip: {
+    display: 'inline-block',
+    cursor: 'pointer',
+    userSelect: 'none' as const,
+    fontSize: 12,
+    fontWeight: 700,
+    padding: '6px 14px',
+    borderRadius: 999,
+    background: '#fff',
+    color: '#555',
+    border: '1px solid #d7e2e8',
+    marginRight: 8,
+  },
+  chipActive: {
+    background: DEEP_BLUE,
+    color: '#fff',
+    border: `1px solid ${DEEP_BLUE}`,
+  },
+  nameLink: {
+    cursor: 'pointer',
+    textDecoration: 'underline',
+    textDecorationColor: 'transparent',
+  },
   section: {
     background: '#fff',
     borderRadius: 12,
@@ -405,11 +766,54 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 20,
     boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
   },
+  sectionHead: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    flexWrap: 'wrap' as const,
+    gap: 6,
+    marginBottom: 4,
+  },
   sectionTitle: {
     fontSize: 16,
     fontWeight: 700,
     color: DEEP_BLUE,
     marginBottom: 16,
+  },
+  sectionNote: {
+    fontSize: 11,
+    color: '#9fb3bd',
+  },
+  dayGroupLabel: {
+    fontSize: 12,
+    fontWeight: 800,
+    color: DEEP_BLUE,
+    background: '#F4F8FA',
+    padding: '4px 10px',
+    borderRadius: 6,
+    display: 'inline-block',
+    margin: '14px 0 4px',
+  },
+  feedRow: {
+    display: 'flex',
+    gap: 14,
+    alignItems: 'flex-start',
+    padding: '10px 0',
+    borderBottom: '1px solid #f3f6f7',
+  },
+  feedDot: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    marginTop: 6,
+    flexShrink: 0,
+  },
+  badge: {
+    fontSize: 11,
+    fontWeight: 700,
+    padding: '3px 10px',
+    borderRadius: 8,
+    whiteSpace: 'nowrap' as const,
   },
   chartsRow: {
     display: 'flex',
@@ -426,16 +830,6 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fafbfc',
     whiteSpace: 'nowrap' as const,
   },
-  thSub: {
-    padding: '6px 14px',
-    textAlign: 'left' as const,
-    fontSize: 11,
-    fontWeight: 600,
-    color: '#999',
-    borderBottom: '1px solid #eee',
-    background: '#fafbfc',
-  },
-  // ヘッダー1行目: 縦スクロール時に上端へ固定
   thSticky: {
     padding: '12px 14px',
     textAlign: 'left' as const,
@@ -449,7 +843,6 @@ const styles: Record<string, React.CSSProperties> = {
     top: 0,
     zIndex: 2,
   },
-  // ヘッダー2行目(達成率/レベル): 1行目の高さ分下げて固定
   thSubSticky: {
     padding: '6px 14px',
     textAlign: 'left' as const,
@@ -462,7 +855,6 @@ const styles: Record<string, React.CSSProperties> = {
     top: 42,
     zIndex: 2,
   },
-  // 左上角(氏名見出し): 縦・横どちらのスクロールでも固定
   thCorner: {
     padding: '12px 14px',
     textAlign: 'left' as const,
@@ -501,7 +893,6 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#333',
     whiteSpace: 'nowrap' as const,
   },
-  // 氏名セル: 横スクロール時に左端へ固定
   tdSticky: {
     padding: '10px 14px',
     fontSize: 13,
