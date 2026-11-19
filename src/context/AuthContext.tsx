@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from 'rea
 import type { ReactNode } from 'react';
 import type { Profile } from '../types';
 import { auth, googleProvider } from '../lib/firebase';
-import { signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { signInWithRedirect, getRedirectResult, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
 import { fetchMe } from '../lib/data';
 import { profiles as mockProfiles } from '../data/mockData';
 
@@ -16,6 +16,9 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   /** Alias kept for backward-compat with existing components */
   logout: () => void;
+  /** signInWithRedirect復帰後、getRedirectResultが失敗を検出した場合のメッセージ */
+  authError: string | null;
+  clearAuthError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,6 +30,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(!!auth); // only loading when Identity Platform is active
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // --- Identity Platform mode helpers ------------------------------------------------
 
@@ -42,6 +46,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!auth) return;
+
+    // signInWithRedirectで他サイトへ遷移して戻ってきた直後、ここで結果を拾う。
+    // 成功時はこの後のonAuthStateChangedが発火してログイン状態になる。
+    // 失敗時(ここでしか検知できない)はエラーメッセージをUIに出す
+    getRedirectResult(auth).catch((err) => {
+      console.error('Google sign-in error:', (err as Error).message);
+      setAuthError('ログインに失敗しました。もう一度お試しください。');
+    });
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
@@ -67,19 +79,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (found) setUser(found);
   }, []);
 
-  /** Google OAuth via Identity Platform */
+  /**
+   * Google OAuth via Identity Platform。
+   * signInWithPopupは、ポップアップ使用時にFirebase Auth SDK内部で
+   * オープナー側のvisibilitychangeと永続化書き込みが競合し
+   * 「Database is closing/hidden」で失敗することがあったため、
+   * ページ遷移を伴うsignInWithRedirectに変更した。
+   * 成功/失敗の結果はAuthProvider初期化時のgetRedirectResultで拾う
+   */
   const signInWithGoogle = useCallback(async () => {
     if (!auth) {
       console.warn('Identity Platform is not configured. Use login() for demo mode.');
       return;
     }
+    setAuthError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithRedirect(auth, googleProvider);
     } catch (err) {
       console.error('Google sign-in error:', (err as Error).message);
+      setAuthError('ログインに失敗しました。もう一度お試しください。');
       throw err;
     }
   }, []);
+
+  const clearAuthError = useCallback(() => setAuthError(null), []);
 
   /** Sign out – works in both modes */
   const signOut = useCallback(async () => {
@@ -96,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, login, signInWithGoogle, signOut, logout }}
+      value={{ user, loading, login, signInWithGoogle, signOut, logout, authError, clearAuthError }}
     >
       {children}
     </AuthContext.Provider>

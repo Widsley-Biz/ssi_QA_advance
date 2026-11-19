@@ -14,11 +14,10 @@ const roleLabelMap: Record<string, string> = {
 };
 
 export default function LoginPage() {
-  const { login, signInWithGoogle } = useAuth();
+  const { login, signInWithGoogle, authError, clearAuthError } = useAuth();
   const navigate = useNavigate();
   const [selectedId, setSelectedId] = useState<string>('');
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleError, setGoogleError] = useState(false);
   const isProductionAuthMode = !!(import.meta.env.VITE_FIREBASE_API_KEY && import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
 
   const handleMockLogin = () => {
@@ -30,13 +29,13 @@ export default function LoginPage() {
   const handleGoogleLogin = async () => {
     if (!signInWithGoogle) return;
     setGoogleLoading(true);
-    setGoogleError(false);
+    clearAuthError();
     try {
+      // signInWithRedirectはページ遷移するため、成功時はここに戻ってこない。
+      // 失敗の検知・表示はAuthContext側(authError)で行う
       await signInWithGoogle();
-      // Auth state change listener will handle navigation
     } catch {
       setGoogleLoading(false);
-      setGoogleError(true);
     }
   };
 
@@ -65,9 +64,9 @@ export default function LoginPage() {
               <GoogleIcon />
               {googleLoading ? 'ログイン中...' : 'Googleでログイン'}
             </button>
-            {googleError && (
+            {authError && (
               <p style={{ fontSize: 12, color: '#c0185a', margin: '10px 0 0' }}>
-                ログインに失敗しました。もう一度お試しください。
+                {authError}
               </p>
             )}
           </>
