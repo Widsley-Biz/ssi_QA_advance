@@ -74,7 +74,7 @@ INSERT INTO exams (id, name, description, group_name, kind, pass_score, time_lim
   ('code-literacy-s9', 'Session 9｜API基礎（後半）& 推しコレクションサイト完成',
    'HTML・CSS・JavaScript・SQL・Python・Git・ターミナル・APIを浅く・広く・構造的に学ぶ全10回ワークショップの第9回。テストはありません。',
    'コードリテラシーワークショップ', 'material', 0, NULL, true, true, 9,
-   '[{"id": "code-literacy-s9-lecture", "label": "第9回 API基礎 後半（本編スライド）", "url": "https://storage.googleapis.com/widsley-skillcheck-materials/code-literacy/code-literacy-s9-lecture", "pages": 12}, {"id": "code-literacy-s9-appendix1", "label": "第9回 API基礎（付録①: API実践リファレンス）", "url": "https://storage.googleapis.com/widsley-skillcheck-materials/code-literacy/code-literacy-s9-appendix1", "pages": 10}, {"id": "code-literacy-s9-appendix2", "label": "第9回 API基礎（付録②: API発展リファレンス）", "url": "https://storage.googleapis.com/widsley-skillcheck-materials/code-literacy/code-literacy-s9-appendix2", "pages": 11}, {"label": "第9回の録画：近日公開"}]'::jsonb)
+   '[{"id": "code-literacy-s9-lecture", "label": "第9回 API基礎 後半（本編スライド）", "url": "https://storage.googleapis.com/widsley-skillcheck-materials/code-literacy/code-literacy-s9-lecture", "pages": 13}, {"id": "code-literacy-s9-appendix1", "label": "第9回 API基礎（付録①: API実践リファレンス）", "url": "https://storage.googleapis.com/widsley-skillcheck-materials/code-literacy/code-literacy-s9-appendix1", "pages": 10}, {"id": "code-literacy-s9-appendix2", "label": "第9回 API基礎（付録②: API発展リファレンス）", "url": "https://storage.googleapis.com/widsley-skillcheck-materials/code-literacy/code-literacy-s9-appendix2", "pages": 11}, {"label": "第9回の録画：近日公開"}]'::jsonb)
 
 ON CONFLICT (id) DO UPDATE SET
   name = EXCLUDED.name, description = EXCLUDED.description,
