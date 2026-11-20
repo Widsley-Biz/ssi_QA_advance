@@ -374,6 +374,17 @@ export default function ExamList() {
                                     : '受験する'}
                         </button>
                       )}
+
+                      {/* 教材(material)は受験ボタンを持たないが、guide(jsonb)があれば
+                          案内ページ（はじめにガイド・後日演習課題の案内等）へのボタンを出す */}
+                      {materialOnly && e.has_guide && (
+                        <button
+                          style={styles.guideBtn}
+                          onClick={() => navigate(`/exams/${encodeURIComponent(e.id)}/guide`)}
+                        >
+                          {e.guide_button_label ?? 'はじめにを読む'}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

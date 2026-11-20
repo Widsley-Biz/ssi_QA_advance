@@ -63,6 +63,10 @@ export interface ExamSummary {
   materials: ExamMaterial[] | null;
   /** 対象者(exam_targets)の設定件数。0件=全員対象 */
   target_count: number;
+  /** guide(jsonb)が設定されているか。trueならExamListに案内ページへのボタンを出す */
+  has_guide: boolean;
+  /** guide.button_label。未設定時のボタン文言はExamList側の既定値（はじめにを読む）に委ねる */
+  guide_button_label: string | null;
 }
 
 /**
@@ -106,16 +110,29 @@ export interface MaterialProgress {
   updated_at: string;
 }
 
-/** 実技の案内。文言とリンクはサーバー（DBのguide列）が持っている */
+/**
+ * 案内（実技模擬・教材の「はじめにガイド」・各回の後日演習課題の案内）の中身。
+ * 文言とリンクはサーバー（DBのguide列）が持っている。
+ *
+ * *_heading は見出し文言の上書き用（省略時はGuideSections側の既定値＝実技模擬の
+ * 見た目をそのまま使う）。linksのurlが"/"始まりならアプリ内リンクとして扱われる。
+ */
 export interface PracticalGuide {
   intro: string;
   what_we_see?: string[];
-  steps?: { no: number; title: string; body: string }[];
+  what_we_see_heading?: string;
+  steps?: { no: number; title: string; body: string; code?: string }[];
+  steps_heading?: string;
   links?: { label: string; url: string; note?: string; primary?: boolean }[];
   contents?: { path: string; body: string }[];
+  contents_heading?: string;
   grading?: string;
+  grading_heading?: string;
   answers_policy?: string;
+  answers_policy_heading?: string;
   note?: string;
+  /** ExamListの案内ボタンの文言（例:「後日演習課題を見る」）。省略時は「はじめにを読む」 */
+  button_label?: string;
 }
 
 export interface PracticalSubmission {
@@ -290,6 +307,21 @@ export const putAdminExamTargets = (examId: string, emails: string[]) =>
     method: 'PUT',
     body: JSON.stringify({ emails }),
   });
+
+/** 教材・実技共通の案内ページ。kindの制限は無い（practical専用のPracticalDetailとは別物） */
+export interface GuideDetail {
+  exam: {
+    id: string;
+    name: string;
+    description: string;
+    group_name: string;
+    kind: ExamKind;
+    guide: PracticalGuide;
+    is_published: boolean;
+  };
+}
+export const getGuide = (examId: string) =>
+  api<GuideDetail>(`/exams/${encodeURIComponent(examId)}/guide`);
 
 export const getPractical = (examId: string) =>
   api<PracticalDetail>(`/exams/${encodeURIComponent(examId)}/practical`);
