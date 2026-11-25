@@ -38,29 +38,114 @@ function scopeAttempts(role: string, id: string, teamId: number | null): Sel {
 }
 
 /**
+ * 試験の「予定」解決結果。
+ *
+ * hasSchedules=false の試験は従来通り exams.opens_at/closes_at/max_attempts
+ * (レガシー予定、schedule_id=null)だけで動く。
+ * hasSchedules=true の試験は exam_schedules の各行(予定)だけを見る。
+ * このとき exams側の opens_at/closes_at/max_attempts は無視される。
+ */
+interface ResolvedSchedule {
+  hasSchedules: boolean;
+  scheduleId: number | null;
+  opensAt: Date | string | null;
+  closesAt: Date | string | null;
+  maxAttempts: number | null;
+  state: 'open' | 'not_yet' | 'closed' | 'not_targeted';
+}
+
+/**
+ * 対象のユーザーにとって「いま有効な予定」を1つ選ぶ。
+ * 候補が複数ある場合は締切(closes_at)が最も近いものを優先する
+ * （同時に開いている予定の対象者は重ならない設計を前提にした決め打ち）。
+ */
+async function resolveSchedule(
+  examId: string,
+  legacy: { opens_at: Date | string | null; closes_at: Date | string | null; max_attempts: number | null },
+  email: string,
+): Promise<ResolvedSchedule> {
+  const { rows: schedules } = await pool.query<{
+    id: number;
+    opens_at: Date | string | null;
+    closes_at: Date | string | null;
+    max_attempts: number | null;
+    open_to_all: boolean;
+    targets_me: boolean;
+  }>(
+    `SELECT s.id, s.opens_at, s.closes_at, s.max_attempts,
+            NOT EXISTS (SELECT 1 FROM exam_schedule_targets t WHERE t.schedule_id = s.id) AS open_to_all,
+            EXISTS (SELECT 1 FROM exam_schedule_targets t WHERE t.schedule_id = s.id AND t.email = $2) AS targets_me
+       FROM exam_schedules s WHERE s.exam_id = $1
+       ORDER BY s.closes_at ASC NULLS LAST, s.id ASC`,
+    [examId, email],
+  );
+
+  if (schedules.length === 0) {
+    const now = new Date();
+    const opensAt = legacy.opens_at ? new Date(legacy.opens_at) : null;
+    const closesAt = legacy.closes_at ? new Date(legacy.closes_at) : null;
+    let state: ResolvedSchedule['state'] = 'open';
+    if (opensAt && now < opensAt) state = 'not_yet';
+    else if (closesAt && now > closesAt) state = 'closed';
+    return { hasSchedules: false, scheduleId: null, opensAt, closesAt, maxAttempts: legacy.max_attempts, state };
+  }
+
+  const mine = schedules.filter((s) => s.open_to_all || s.targets_me);
+  if (mine.length === 0) {
+    return { hasSchedules: true, scheduleId: null, opensAt: null, closesAt: null, maxAttempts: null, state: 'not_targeted' };
+  }
+
+  const now = new Date();
+  const isOpen = (s: (typeof mine)[number]) =>
+    (s.opens_at == null || now >= new Date(s.opens_at)) && (s.closes_at == null || now <= new Date(s.closes_at));
+  const openOnes = mine.filter(isOpen);
+  if (openOnes.length > 0) {
+    const s = openOnes[0]; // 既に closes_at 昇順でソート済み＝最も締切が近いもの
+    return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'open' };
+  }
+
+  const future = mine
+    .filter((s) => s.opens_at && now < new Date(s.opens_at))
+    .sort((a, b) => new Date(a.opens_at!).getTime() - new Date(b.opens_at!).getTime());
+  if (future.length > 0) {
+    const s = future[0];
+    return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'not_yet' };
+  }
+
+  const past = [...mine].sort(
+    (a, b) => new Date(b.closes_at ?? 0).getTime() - new Date(a.closes_at ?? 0).getTime(),
+  );
+  const s = past[0];
+  return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'closed' };
+}
+
+/**
  * 試験の受験可否判定。board は常にtrue（下見・管理用）。
- * member/leader は is_published・開始/終了日時・対象者(exam_targets)を見る。
- * exam_targets に1件も行が無い試験は全員対象（既存の自習試験と同じ動作）。
+ * member/leader は is_published・予定(レガシー or exam_schedules)・対象者を見る。
+ * 対象者を1人も設定していない予定は全員対象（既存の自習試験と同じ動作）。
  */
 async function checkExamAccess(
-  exam: { id: string; is_published: boolean; opens_at: Date | string | null; closes_at: Date | string | null },
+  exam: {
+    id: string;
+    is_published: boolean;
+    opens_at: Date | string | null;
+    closes_at: Date | string | null;
+    max_attempts?: number | null;
+  },
   profile: Profile,
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; reason?: string; schedule?: ResolvedSchedule }> {
   if (profile.role === 'board') return { ok: true };
   if (!exam.is_published) return { ok: false, reason: '非公開の試験です' };
 
-  const now = new Date();
-  if (exam.opens_at && now < new Date(exam.opens_at)) return { ok: false, reason: 'この試験はまだ開始していません' };
-  if (exam.closes_at && now > new Date(exam.closes_at)) return { ok: false, reason: 'この試験は受付を終了しました' };
-
-  const { rows } = await pool.query(
-    `SELECT count(*)::int AS total,
-            count(*) FILTER (WHERE email = $2)::int AS mine
-       FROM exam_targets WHERE exam_id = $1`,
-    [exam.id, profile.email],
+  const resolved = await resolveSchedule(
+    exam.id,
+    { opens_at: exam.opens_at, closes_at: exam.closes_at, max_attempts: exam.max_attempts ?? null },
+    profile.email,
   );
-  if (rows[0].total > 0 && rows[0].mine === 0) return { ok: false, reason: 'この試験の対象者ではありません' };
-  return { ok: true };
+  if (resolved.state === 'not_yet') return { ok: false, reason: 'この試験はまだ開始していません' };
+  if (resolved.state === 'closed') return { ok: false, reason: 'この試験は受付を終了しました' };
+  if (resolved.state === 'not_targeted') return { ok: false, reason: 'この試験の対象者ではありません' };
+  return { ok: true, schedule: resolved };
 }
 
 /** 正式試験（closes_at設定あり）は終了まで採点結果を非公開にする */
@@ -73,32 +158,73 @@ examsRouter.get('/exams', async (req, res) => {
   const p = req.profile!;
   if (p.role === 'retired') return res.status(403).json({ error: 'not permitted' });
 
+  // 複数予定(exam_schedules)を持つ試験は、このユーザーに対して「いま有効な予定」を
+  // hs/rs/eff の3段のLATERALで解決する。exam_schedulesが1件も無い試験(大多数)は
+  // 従来通り exams.opens_at/closes_at/max_attempts(レガシー予定)がそのまま使われる。
+  // (resolveSchedule()と同じ「締切が最も近い予定を優先」のロジックをSQLで表現している)
   const { rows } = await pool.query(
     `SELECT e.id, e.name, e.description, e.group_name, e.pass_score, e.time_limit_min,
             e.sort_order, e.is_published, e.kind, e.category,
-            e.opens_at, e.closes_at, e.max_attempts, e.materials,
+            eff.opens_at, eff.closes_at, eff.max_attempts, e.materials,
             (e.guide IS NOT NULL) AS has_guide,
             e.guide ->> 'button_label' AS guide_button_label,
             (SELECT count(*) FROM exam_targets t WHERE t.exam_id = e.id)::int AS target_count,
             (SELECT count(*) FROM exam_questions q WHERE q.exam_id = e.id)::int      AS question_count,
             (SELECT COALESCE(sum(q.points), 0) FROM exam_questions q WHERE q.exam_id = e.id)::int AS total_points,
             (SELECT count(*) FROM exam_attempts a
-              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted')::int AS my_attempts,
+              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted'
+                AND a.schedule_id IS NOT DISTINCT FROM eff.schedule_id)::int AS my_attempts,
             (SELECT max(a.earned_points) FROM exam_attempts a
-              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted')::int AS my_best_score,
+              WHERE a.exam_id = e.id AND a.user_id = $1 AND a.status = 'submitted'
+                AND a.schedule_id IS NOT DISTINCT FROM eff.schedule_id)::int AS my_best_score,
             -- 実技（kind='practical'）はここで採点しないので、自己申告の回数と最終日時だけ添える
             (SELECT count(*) FROM exam_practical_submissions s
               WHERE s.exam_id = e.id AND s.user_id = $1)::int AS my_practical_count,
             (SELECT max(s.submitted_at) FROM exam_practical_submissions s
               WHERE s.exam_id = e.id AND s.user_id = $1)      AS my_practical_at
        FROM exams e
+       LEFT JOIN LATERAL (
+             SELECT true AS yes FROM exam_schedules hs0 WHERE hs0.exam_id = e.id LIMIT 1
+            ) hs ON true
+       LEFT JOIN LATERAL (
+             -- board は下見のため対象者で絞らず、一番締切が近い予定を見せる
+             -- (絞ってしまうと、どの予定の対象者にもなっていないboardユーザーには
+             --  日程が全て空欄に見えてしまう)
+             SELECT s.id, s.opens_at, s.closes_at, s.max_attempts
+               FROM exam_schedules s
+              WHERE s.exam_id = e.id
+                AND ($2 = 'board' OR (s.opens_at  IS NULL OR s.opens_at  <= now()))
+                AND ($2 = 'board' OR (s.closes_at IS NULL OR s.closes_at >= now()))
+                AND (
+                      $2 = 'board'
+                   OR NOT EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id)
+                   OR EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id AND st.email = $3)
+                    )
+              -- boardは時間での絞り込みをしていないため、終了済みの予定より
+              -- 開催中・予約中の予定を優先して表示する(そうしないと終了済みの
+              -- 最初の予定が一番締切が近い=優先されてしまう)
+              ORDER BY (s.closes_at IS NOT NULL AND s.closes_at < now()) ASC, s.closes_at ASC NULLS LAST, s.id ASC
+              LIMIT 1
+            ) rs ON true
+       LEFT JOIN LATERAL (
+             SELECT
+               CASE WHEN hs.yes THEN rs.id          ELSE NULL         END AS schedule_id,
+               CASE WHEN hs.yes THEN rs.opens_at    ELSE e.opens_at   END AS opens_at,
+               CASE WHEN hs.yes THEN rs.closes_at   ELSE e.closes_at  END AS closes_at,
+               CASE WHEN hs.yes THEN rs.max_attempts ELSE e.max_attempts END AS max_attempts
+            ) eff ON true
       WHERE $2 = 'board' OR (
               e.is_published
-          AND (e.opens_at  IS NULL OR e.opens_at  <= now())
-          AND (e.closes_at IS NULL OR e.closes_at >= now())
           AND (
-                NOT EXISTS (SELECT 1 FROM exam_targets t WHERE t.exam_id = e.id)
-             OR EXISTS (SELECT 1 FROM exam_targets t WHERE t.exam_id = e.id AND t.email = $3)
+                (hs.yes IS NOT TRUE
+                  AND (e.opens_at  IS NULL OR e.opens_at  <= now())
+                  AND (e.closes_at IS NULL OR e.closes_at >= now())
+                  AND (
+                        NOT EXISTS (SELECT 1 FROM exam_targets t WHERE t.exam_id = e.id)
+                     OR EXISTS (SELECT 1 FROM exam_targets t WHERE t.exam_id = e.id AND t.email = $3)
+                      )
+                )
+             OR (hs.yes IS TRUE AND eff.schedule_id IS NOT NULL)
               )
             )
       ORDER BY e.group_name, e.sort_order, e.id`,
@@ -377,20 +503,26 @@ examsRouter.get('/exams/attempts', async (req, res) => {
   const roleParam = `$${values.length}`;
 
   // 正式試験（closes_at設定あり）は終了まで本人・リーダーに点数を見せない（boardのみ常に見える）。
-  // ここで隠さないと、結果画面は非表示にしていても一覧（受験履歴）から漏れてしまう
+  // ここで隠さないと、結果画面は非表示にしていても一覧（受験履歴）から漏れてしまう。
+  // 複数予定(exam_schedules)を使っている試験は、受験時の予定(a.schedule_id)に
+  // 紐づく closes_at を基準にする（exams.closes_at は複数予定モードでは参照しない）
   const { rows } = await pool.query(
     `SELECT a.id, a.exam_id, e.name AS exam_name, a.user_id, pr.display_name,
             a.status, a.started_at, a.submitted_at,
-            CASE WHEN ${roleParam} = 'board' OR e.closes_at IS NULL OR e.closes_at <= now()
+            CASE WHEN ${roleParam} = 'board' OR eff.closes_at IS NULL OR eff.closes_at <= now()
                  THEN a.earned_points END AS earned_points,
-            CASE WHEN ${roleParam} = 'board' OR e.closes_at IS NULL OR e.closes_at <= now()
+            CASE WHEN ${roleParam} = 'board' OR eff.closes_at IS NULL OR eff.closes_at <= now()
                  THEN a.total_points END AS total_points,
-            CASE WHEN ${roleParam} = 'board' OR e.closes_at IS NULL OR e.closes_at <= now()
+            CASE WHEN ${roleParam} = 'board' OR eff.closes_at IS NULL OR eff.closes_at <= now()
                  THEN a.passed END AS passed,
-            (${roleParam} <> 'board' AND e.closes_at IS NOT NULL AND e.closes_at > now()) AS pending_reveal
+            (${roleParam} <> 'board' AND eff.closes_at IS NOT NULL AND eff.closes_at > now()) AS pending_reveal
        FROM exam_attempts a
        JOIN exams e ON e.id = a.exam_id
        JOIN profiles pr ON pr.id = a.user_id
+       LEFT JOIN exam_schedules es ON es.id = a.schedule_id
+       LEFT JOIN LATERAL (
+             SELECT CASE WHEN a.schedule_id IS NOT NULL THEN es.closes_at ELSE e.closes_at END AS closes_at
+            ) eff ON true
       WHERE ${scope.clause}${extra} AND a.status = 'submitted'
       ORDER BY a.submitted_at DESC
       LIMIT 200`,
@@ -418,13 +550,19 @@ examsRouter.post('/exams/:examId/start', async (req, res) => {
   if (!access.ok) return res.status(403).json({ error: access.reason });
   if (exam.kind !== 'written') return res.status(409).json({ error: 'not a written exam' });
 
-  if (exam.max_attempts != null && p.role !== 'board') {
+  // board はaccess.scheduleを持たない(checkExamAccessが早期return するため)。
+  // boardは下見のみでmax_attempts判定の対象外なので scheduleId=null のまま進めてよい
+  const scheduleId = access.schedule?.scheduleId ?? null;
+  const maxAttempts = access.schedule?.maxAttempts ?? exam.max_attempts;
+
+  if (maxAttempts != null && p.role !== 'board') {
     const { rows: cnt } = await pool.query(
       `SELECT count(*)::int AS n FROM exam_attempts
-        WHERE user_id = $1 AND exam_id = $2 AND status = 'submitted'`,
-      [p.id, examId],
+        WHERE user_id = $1 AND exam_id = $2 AND status = 'submitted'
+          AND schedule_id IS NOT DISTINCT FROM $3`,
+      [p.id, examId, scheduleId],
     );
-    if (cnt[0].n >= exam.max_attempts) {
+    if (cnt[0].n >= maxAttempts) {
       return res.status(409).json({ error: '受験回数の上限に達しています' });
     }
   }
@@ -433,13 +571,16 @@ examsRouter.post('/exams/:examId/start', async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // 同じ予定(schedule_id)の未提出attemptだけ再利用する。複数予定を使っている
+    // 試験で、別の予定(過去ラウンド等)の未提出attemptを誤って再開しないように
     let attempt = (
       await client.query(
         `SELECT * FROM exam_attempts
           WHERE user_id = $1 AND exam_id = $2 AND status = 'in_progress'
+            AND schedule_id IS NOT DISTINCT FROM $3
           ORDER BY started_at DESC LIMIT 1
           FOR UPDATE`,
-        [p.id, examId],
+        [p.id, examId, scheduleId],
       )
     ).rows[0];
 
@@ -457,9 +598,9 @@ examsRouter.post('/exams/:examId/start', async (req, res) => {
       }
       attempt = (
         await client.query(
-          `INSERT INTO exam_attempts (user_id, exam_id, question_ids)
-           VALUES ($1, $2, $3) RETURNING *`,
-          [p.id, examId, ids],
+          `INSERT INTO exam_attempts (user_id, exam_id, schedule_id, question_ids)
+           VALUES ($1, $2, $3, $4) RETURNING *`,
+          [p.id, examId, scheduleId, ids],
         )
       ).rows[0];
     }
@@ -572,13 +713,20 @@ examsRouter.post('/exams/attempts/:attemptId/submit', async (req, res) => {
 
     await client.query('COMMIT');
     // 正式試験（closes_at設定あり）は終了まで本人に採点結果・解説を見せない。
+    // 複数予定(exam_schedules)を使っている試験は、受験時の予定自体のcloses_atを基準にする
+    // （exams.closes_atは複数予定モードでは無視する）。
     // 採点自体とexam_attempt_answersへの保存はここまでで完了済みなので、絞るのはレスポンスだけ
-    if (p.role !== 'board' && !isRevealed(exam)) {
+    const effectiveClosesAt =
+      attempt.schedule_id != null
+        ? (await pool.query('SELECT closes_at FROM exam_schedules WHERE id = $1', [attempt.schedule_id])).rows[0]
+            ?.closes_at ?? null
+        : exam.closes_at;
+    if (p.role !== 'board' && !isRevealed({ closes_at: effectiveClosesAt })) {
       return res.json({
         attempt_id: attemptId,
         exam: { id: exam.id, name: exam.name },
         status: 'submitted',
-        reveal_at: exam.closes_at,
+        reveal_at: effectiveClosesAt,
       });
     }
     res.json(await buildResult(attemptId));
@@ -614,12 +762,17 @@ examsRouter.get('/exams/attempts/:attemptId', async (req, res) => {
   if (attempt.status !== 'submitted') return res.status(409).json({ error: 'not submitted yet' });
 
   const exam = (await pool.query('SELECT id, name, closes_at FROM exams WHERE id = $1', [attempt.exam_id])).rows[0];
-  if (p.role !== 'board' && !isRevealed(exam)) {
+  const effectiveClosesAt =
+    attempt.schedule_id != null
+      ? (await pool.query('SELECT closes_at FROM exam_schedules WHERE id = $1', [attempt.schedule_id])).rows[0]
+          ?.closes_at ?? null
+      : exam.closes_at;
+  if (p.role !== 'board' && !isRevealed({ closes_at: effectiveClosesAt })) {
     return res.json({
       attempt_id: attemptId,
       exam: { id: exam.id, name: exam.name },
       status: 'submitted',
-      reveal_at: exam.closes_at,
+      reveal_at: effectiveClosesAt,
     });
   }
   res.json(await buildResult(attemptId));
@@ -642,15 +795,26 @@ examsRouter.get('/exams/report', requireRole('board'), async (_req, res) => {
      )
      SELECT p.id AS user_id, p.display_name, p.team_id,
             e.id AS exam_id, e.name AS exam_name, e.group_name, e.sort_order,
-            COALESCE(t.total, 0) > 0 AND COALESCE(t.mine, 0) = 0 AS excluded,
+            CASE
+              -- 複数予定(exam_schedules)モード：いずれかの予定の対象(全員対象含む)なら除外しない
+              WHEN t.sched_total > 0 THEN t.sched_open_count = 0 AND t.sched_mine = 0
+              -- レガシー予定：従来通りexam_targetsだけで判定
+              ELSE COALESCE(t.legacy_total, 0) > 0 AND COALESCE(t.legacy_mine, 0) = 0
+            END AS excluded,
             ba.attempt_id, ba.earned_points, ba.total_points, ba.passed, ba.submitted_at
        FROM profiles p
       CROSS JOIN exams e
        LEFT JOIN best_attempts ba ON ba.user_id = p.id AND ba.exam_id = e.id
        LEFT JOIN LATERAL (
-             SELECT count(*)::int AS total,
-                    count(*) FILTER (WHERE email = p.email)::int AS mine
-               FROM exam_targets WHERE exam_id = e.id
+             SELECT
+               (SELECT count(*) FROM exam_targets WHERE exam_id = e.id)::int AS legacy_total,
+               (SELECT count(*) FROM exam_targets WHERE exam_id = e.id AND email = p.email)::int AS legacy_mine,
+               (SELECT count(*) FROM exam_schedules WHERE exam_id = e.id)::int AS sched_total,
+               (SELECT count(*) FROM exam_schedules s WHERE s.exam_id = e.id
+                  AND NOT EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id))::int AS sched_open_count,
+               (SELECT count(*) FROM exam_schedule_targets st
+                  JOIN exam_schedules s ON s.id = st.schedule_id
+                 WHERE s.exam_id = e.id AND st.email = p.email)::int AS sched_mine
             ) t ON true
       WHERE p.role NOT IN ('retired', 'board')
         -- kind='material'はテストを持たない教材のみコースなので、
@@ -747,6 +911,270 @@ examsRouter.put('/admin/exams/:examId/targets', requireRole('board'), async (req
     client.release();
   }
   res.json({ exam_id: examId, emails });
+});
+
+function validateWidsleyEmails(emailsRaw: unknown): string[] | { error: string } {
+  if (!Array.isArray(emailsRaw)) return { error: 'emails must be an array' };
+  const emails = [...new Set(emailsRaw.map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
+  for (const email of emails) {
+    if (!email.endsWith('@widsley.com')) {
+      return { error: `@widsley.com 以外のメールは指定できません: ${email}` };
+    }
+  }
+  return emails;
+}
+
+function validateScheduleBody(body: unknown): {
+  label: string;
+  opensAt: Date | null;
+  closesAt: Date | null;
+  maxAttempts: number | null;
+  emails: string[];
+} | { error: string } {
+  const { label, opens_at, closes_at, max_attempts, emails: emailsRaw } = (body ?? {}) as {
+    label?: string;
+    opens_at?: string | null;
+    closes_at?: string | null;
+    max_attempts?: number | null;
+    emails?: unknown;
+  };
+  if (max_attempts != null && (!Number.isInteger(max_attempts) || max_attempts <= 0)) {
+    return { error: 'max_attempts must be a positive integer or null' };
+  }
+  const opensAt = opens_at ? new Date(opens_at) : null;
+  const closesAt = closes_at ? new Date(closes_at) : null;
+  if (opensAt && Number.isNaN(opensAt.getTime())) return { error: 'bad opens_at' };
+  if (closesAt && Number.isNaN(closesAt.getTime())) return { error: 'bad closes_at' };
+  if (opensAt && closesAt && opensAt > closesAt) return { error: 'opens_at must be before closes_at' };
+  const emails = validateWidsleyEmails(emailsRaw ?? []);
+  if ('error' in emails) return emails;
+  return { label: typeof label === 'string' ? label.trim() : '', opensAt, closesAt, maxAttempts: max_attempts ?? null, emails };
+}
+
+/**
+ * 管理者向け：試験の「予定」一覧(複数予定モード)。
+ * 開催中・予約中を先に、終了済み(履歴)を後ろに並べる。
+ */
+examsRouter.get('/admin/exams/:examId/schedules', requireRole('board'), async (req, res) => {
+  const examId = req.params.examId;
+  const exam = (await pool.query('SELECT id FROM exams WHERE id = $1', [examId])).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+
+  const { rows } = await pool.query(
+    `SELECT s.id, s.label, s.opens_at, s.closes_at, s.max_attempts,
+            (SELECT count(*) FROM exam_schedule_targets t WHERE t.schedule_id = s.id)::int AS target_count,
+            (SELECT count(*) FROM exam_attempts a WHERE a.schedule_id = s.id AND a.status = 'submitted')::int AS attempt_count,
+            (s.closes_at IS NOT NULL AND s.closes_at <= now()) AS is_past
+       FROM exam_schedules s
+      WHERE s.exam_id = $1
+      ORDER BY (s.closes_at IS NOT NULL AND s.closes_at <= now()) ASC, s.opens_at ASC NULLS LAST, s.id ASC`,
+    [examId],
+  );
+  res.json(rows);
+});
+
+/** 管理者向け：予定1件の詳細（対象者ロスター・結果一覧）。クリックして開く画面用 */
+examsRouter.get('/admin/exams/:examId/schedules/:scheduleId', requireRole('board'), async (req, res) => {
+  const examId = String(req.params.examId);
+  const scheduleId = String(req.params.scheduleId);
+  if (!/^\d+$/.test(scheduleId)) return res.status(400).json({ error: 'bad schedule id' });
+
+  const schedule = (
+    await pool.query(
+      `SELECT id, exam_id, label, opens_at, closes_at, max_attempts
+         FROM exam_schedules WHERE id = $1 AND exam_id = $2`,
+      [scheduleId, examId],
+    )
+  ).rows[0];
+  if (!schedule) return res.status(404).json({ error: 'schedule not found' });
+
+  const { rows: targetEmails } = await pool.query(
+    'SELECT email FROM exam_schedule_targets WHERE schedule_id = $1 ORDER BY email',
+    [scheduleId],
+  );
+
+  // 対象者を指定している予定は「対象者 × ベスト結果」のロスターを返す（未受験者もnullの行で含む）。
+  // 対象者指定なし(全員対象)の予定は対象者ロスターを組めないため、実際に受験した人の結果だけを返す
+  const { rows: members } = await pool.query(
+    `WITH best AS (
+       SELECT DISTINCT ON (a.user_id) a.user_id, a.id AS attempt_id, a.status,
+              a.earned_points, a.total_points, a.passed, a.submitted_at
+         FROM exam_attempts a WHERE a.schedule_id = $1
+        ORDER BY a.user_id, a.earned_points DESC NULLS LAST, a.submitted_at DESC NULLS LAST
+     )
+     SELECT pr.id AS user_id, pr.email, pr.display_name,
+            b.attempt_id, b.status, b.earned_points, b.total_points, b.passed, b.submitted_at
+       FROM profiles pr
+       LEFT JOIN best b ON b.user_id = pr.id
+      WHERE ($2::int = 0 AND b.attempt_id IS NOT NULL)
+         OR ($2::int > 0 AND pr.email = ANY($3::text[]))
+      ORDER BY pr.display_name`,
+    [scheduleId, targetEmails.length, targetEmails.map((t) => t.email)],
+  );
+
+  res.json({
+    exam_id: examId,
+    schedule,
+    target_count: targetEmails.length,
+    // 対象者を編集フォームに正しくプリフィルするための生のメール一覧。
+    // members はprofilesに行が無いemail(未ログインの対象者)を含まないため、
+    // 編集時にこちらを無視してmembersから復元すると対象者が消えてしまう
+    target_emails: targetEmails.map((t) => t.email),
+    members,
+  });
+});
+
+/**
+ * 管理者向け：試験に新しい予定(開催回)を追加する。
+ * この試験がまだ「複数予定モード」でない(exam_schedulesが0件)場合は、
+ * 既存のレガシー予定(exams.opens_at/closes_at/max_attempts + exam_targets)を
+ * まず1件目の予定としてコピーし、それに紐づく未割当のexam_attempts(schedule_id IS NULL)を
+ * そちらに向け替えてから、リクエストされた新しい予定を追加する
+ * （途中で見えなくなる受験者・受験記録が出ないようにするための移行手順）。
+ */
+examsRouter.post('/admin/exams/:examId/schedules', requireRole('board'), async (req, res) => {
+  const examId = req.params.examId;
+  const parsed = validateScheduleBody(req.body);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const exam = (
+      await client.query('SELECT id, is_published, opens_at, closes_at, max_attempts FROM exams WHERE id = $1 FOR UPDATE', [examId])
+    ).rows[0];
+    if (!exam) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'exam not found' });
+    }
+
+    const existingCount = (
+      await client.query('SELECT count(*)::int AS n FROM exam_schedules WHERE exam_id = $1', [examId])
+    ).rows[0].n;
+
+    if (existingCount === 0) {
+      const legacyTargets = (
+        await client.query('SELECT email FROM exam_targets WHERE exam_id = $1', [examId])
+      ).rows.map((r) => r.email);
+      const legacy = (
+        await client.query(
+          `INSERT INTO exam_schedules (exam_id, label, opens_at, closes_at, max_attempts)
+           VALUES ($1, '(以前の設定)', $2, $3, $4) RETURNING id`,
+          [examId, exam.opens_at, exam.closes_at, exam.max_attempts],
+        )
+      ).rows[0];
+      for (const email of legacyTargets) {
+        await client.query(
+          'INSERT INTO exam_schedule_targets (schedule_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [legacy.id, email],
+        );
+      }
+      await client.query(
+        'UPDATE exam_attempts SET schedule_id = $2 WHERE exam_id = $1 AND schedule_id IS NULL',
+        [examId, legacy.id],
+      );
+    }
+
+    const created = (
+      await client.query(
+        `INSERT INTO exam_schedules (exam_id, label, opens_at, closes_at, max_attempts)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, label, opens_at, closes_at, max_attempts`,
+        [examId, parsed.label, parsed.opensAt, parsed.closesAt, parsed.maxAttempts],
+      )
+    ).rows[0];
+    for (const email of parsed.emails) {
+      await client.query(
+        'INSERT INTO exam_schedule_targets (schedule_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [created.id, email],
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json({ ...created, target_emails: parsed.emails });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+
+/** 管理者向け：既存の予定を更新する。日程・回数上限・対象者を1つのトランザクションで保存する */
+examsRouter.put('/admin/exams/:examId/schedules/:scheduleId', requireRole('board'), async (req, res) => {
+  const examId = String(req.params.examId);
+  const scheduleId = String(req.params.scheduleId);
+  if (!/^\d+$/.test(scheduleId)) return res.status(400).json({ error: 'bad schedule id' });
+  const parsed = validateScheduleBody(req.body);
+  if ('error' in parsed) return res.status(400).json({ error: parsed.error });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rowCount } = await client.query(
+      `UPDATE exam_schedules SET label = $3, opens_at = $4, closes_at = $5, max_attempts = $6
+        WHERE id = $1 AND exam_id = $2`,
+      [scheduleId, examId, parsed.label, parsed.opensAt, parsed.closesAt, parsed.maxAttempts],
+    );
+    if (!rowCount) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'schedule not found' });
+    }
+    await client.query('DELETE FROM exam_schedule_targets WHERE schedule_id = $1', [scheduleId]);
+    for (const email of parsed.emails) {
+      await client.query(
+        'INSERT INTO exam_schedule_targets (schedule_id, email) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [scheduleId, email],
+      );
+    }
+    await client.query('COMMIT');
+    res.json({
+      id: Number(scheduleId),
+      label: parsed.label,
+      opens_at: parsed.opensAt,
+      closes_at: parsed.closesAt,
+      max_attempts: parsed.maxAttempts,
+      target_emails: parsed.emails,
+    });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
+  }
+});
+
+/**
+ * 管理者向け：予定を削除する。
+ * 受験記録(exam_attempts)が1件でも紐づく予定は、受験回数集計・結果公開の基準が
+ * 失われるため削除を拒否する。また、最後の1件を削除すると試験がレガシー予定
+ * (exams側の古い値)に戻ってしまい分かりにくいため、それも拒否する
+ */
+examsRouter.delete('/admin/exams/:examId/schedules/:scheduleId', requireRole('board'), async (req, res) => {
+  const examId = String(req.params.examId);
+  const scheduleId = String(req.params.scheduleId);
+  if (!/^\d+$/.test(scheduleId)) return res.status(400).json({ error: 'bad schedule id' });
+
+  const schedule = (
+    await pool.query('SELECT id FROM exam_schedules WHERE id = $1 AND exam_id = $2', [scheduleId, examId])
+  ).rows[0];
+  if (!schedule) return res.status(404).json({ error: 'schedule not found' });
+
+  const attemptCount = (
+    await pool.query('SELECT count(*)::int AS n FROM exam_attempts WHERE schedule_id = $1', [scheduleId])
+  ).rows[0].n;
+  if (attemptCount > 0) {
+    return res.status(409).json({ error: 'この予定には受験記録があるため削除できません' });
+  }
+
+  const totalCount = (
+    await pool.query('SELECT count(*)::int AS n FROM exam_schedules WHERE exam_id = $1', [examId])
+  ).rows[0].n;
+  if (totalCount <= 1) {
+    return res.status(409).json({ error: '最後の1件は削除できません（試験全体を非公開にしてください）' });
+  }
+
+  await pool.query('DELETE FROM exam_schedules WHERE id = $1', [scheduleId]);
+  res.json({ ok: true });
 });
 
 async function buildResult(attemptId: number) {
