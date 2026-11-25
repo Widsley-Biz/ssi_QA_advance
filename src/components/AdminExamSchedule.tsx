@@ -348,7 +348,7 @@ export default function AdminExamSchedule() {
     if (s.target_count > 0) {
       try {
         const detail = await getAdminExamScheduleDetail(examId, s.id);
-        setScheduleSelectedEmails(new Set(detail.members.map((m) => m.email)));
+        setScheduleSelectedEmails(new Set(detail.target_emails));
       } catch {
         setScheduleFormError('対象者の取得に失敗しました');
       }
@@ -417,6 +417,7 @@ export default function AdminExamSchedule() {
     }
   };
 
+  const inScheduleMode = schedules.length > 0;
   const upcomingSchedules = schedules.filter((s) => !s.is_past);
   const pastSchedules = schedules.filter((s) => s.is_past);
 
@@ -472,7 +473,9 @@ export default function AdminExamSchedule() {
       ) : (
         <>
           <div style={styles.card}>
-            <h3 style={styles.cardTitle}>単一予定（互換用・1つだけ予定する場合はこちらで十分です）</h3>
+            <h3 style={styles.cardTitle}>
+              {inScheduleMode ? '公開状態' : '単一予定（互換用・1つだけ予定する場合はこちらで十分です）'}
+            </h3>
             <label style={styles.publishRow}>
               <input
                 type="checkbox"
@@ -486,58 +489,68 @@ export default function AdminExamSchedule() {
                 （非公開の間はboard以外に一切表示されません）
               </span>
             </label>
-            <div style={styles.row}>
-              <div style={styles.field}>
-                <label style={styles.label}>開始日時（日本時間・空欄=常時公開）</label>
-                <input
-                  type="datetime-local"
-                  value={opensAt}
-                  onChange={(e) => setOpensAt(e.target.value)}
-                  style={styles.input}
-                />
+            {inScheduleMode && (
+              <p style={{ ...styles.hint, marginTop: 0, marginBottom: 14 }}>
+                この試験は下の「複数予定」で日程・受験回数・対象者を管理しています
+                （単一予定の日程欄は使われません）。
+              </p>
+            )}
+            {!inScheduleMode && (
+              <div style={styles.row}>
+                <div style={styles.field}>
+                  <label style={styles.label}>開始日時（日本時間・空欄=常時公開）</label>
+                  <input
+                    type="datetime-local"
+                    value={opensAt}
+                    onChange={(e) => setOpensAt(e.target.value)}
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.field}>
+                  <label style={styles.label}>終了日時（日本時間・空欄=常時公開・結果は提出後すぐ表示）</label>
+                  <input
+                    type="datetime-local"
+                    value={closesAt}
+                    onChange={(e) => setClosesAt(e.target.value)}
+                    style={styles.input}
+                  />
+                </div>
+                <div style={styles.field}>
+                  <label style={styles.label}>受験回数上限（空欄=無制限）</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={maxAttempts}
+                    onChange={(e) => setMaxAttempts(e.target.value)}
+                    style={styles.input}
+                    placeholder="例: 1"
+                  />
+                </div>
               </div>
-              <div style={styles.field}>
-                <label style={styles.label}>終了日時（日本時間・空欄=常時公開・結果は提出後すぐ表示）</label>
-                <input
-                  type="datetime-local"
-                  value={closesAt}
-                  onChange={(e) => setClosesAt(e.target.value)}
-                  style={styles.input}
-                />
-              </div>
-              <div style={styles.field}>
-                <label style={styles.label}>受験回数上限（空欄=無制限）</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={maxAttempts}
-                  onChange={(e) => setMaxAttempts(e.target.value)}
-                  style={styles.input}
-                  placeholder="例: 1"
-                />
-              </div>
-            </div>
+            )}
             <button style={styles.saveBtn} disabled={saving} onClick={handleSaveSchedule}>
-              {saving ? '保存中...' : '公開状態・日程・受験回数を保存'}
+              {saving ? '保存中...' : inScheduleMode ? '公開状態を保存' : '公開状態・日程・受験回数を保存'}
             </button>
           </div>
 
-          <div style={styles.card}>
-            <h3 style={styles.cardTitle}>
-              単一予定の対象者（{selectedEmails.size === 0 ? '未選択＝全員対象' : `${selectedEmails.size}名選択中`}）
-            </h3>
-            <MemberPicker
-              groupedMembers={groupedMembers}
-              selectedEmails={selectedEmails}
-              query={memberQuery}
-              onQueryChange={setMemberQuery}
-              onToggleMember={toggleMember}
-              onToggleGroup={toggleGroup}
-            />
-            <button style={{ ...styles.saveBtn, marginTop: 14 }} disabled={saving} onClick={handleSaveTargets}>
-              {saving ? '保存中...' : '対象者を保存'}
-            </button>
-          </div>
+          {!inScheduleMode && (
+            <div style={styles.card}>
+              <h3 style={styles.cardTitle}>
+                単一予定の対象者（{selectedEmails.size === 0 ? '未選択＝全員対象' : `${selectedEmails.size}名選択中`}）
+              </h3>
+              <MemberPicker
+                groupedMembers={groupedMembers}
+                selectedEmails={selectedEmails}
+                query={memberQuery}
+                onQueryChange={setMemberQuery}
+                onToggleMember={toggleMember}
+                onToggleGroup={toggleGroup}
+              />
+              <button style={{ ...styles.saveBtn, marginTop: 14 }} disabled={saving} onClick={handleSaveTargets}>
+                {saving ? '保存中...' : '対象者を保存'}
+              </button>
+            </div>
+          )}
 
           <div style={styles.card}>
             <div style={styles.scheduleHeadRow}>

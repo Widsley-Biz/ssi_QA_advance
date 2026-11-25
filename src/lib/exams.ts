@@ -339,6 +339,8 @@ export interface ExamScheduleDetail {
   exam_id: string;
   schedule: { id: number; label: string; opens_at: string | null; closes_at: string | null; max_attempts: number | null };
   target_count: number;
+  /** 対象者ロスター(membersはprofilesが無いemailを含まないため、編集時の対象者プリフィルには使わない) */
+  target_emails: string[];
   members: ExamScheduleMember[];
 }
 export interface ExamScheduleBody {

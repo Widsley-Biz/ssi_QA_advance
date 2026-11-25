@@ -47,3 +47,11 @@ ALTER TABLE exam_attempts
 CREATE INDEX IF NOT EXISTS idx_exam_schedules_exam ON exam_schedules(exam_id);
 CREATE INDEX IF NOT EXISTS idx_exam_schedule_targets_schedule ON exam_schedule_targets(schedule_id);
 CREATE INDEX IF NOT EXISTS idx_exam_attempts_schedule ON exam_attempts(schedule_id);
+
+-- 本番APIはapp_userで接続しており、app_userはDDL権限を持たない。
+-- postgres(管理者)で上のCREATE TABLEを実行した場合は、このGRANTも
+-- 忘れず実行すること（exam_targets等、既存テーブルと同じパターン）
+GRANT SELECT, INSERT, UPDATE, DELETE ON exam_schedules TO app_user;
+GRANT USAGE, SELECT ON SEQUENCE exam_schedules_id_seq TO app_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON exam_schedule_targets TO app_user;
+GRANT USAGE, SELECT ON SEQUENCE exam_schedule_targets_id_seq TO app_user;

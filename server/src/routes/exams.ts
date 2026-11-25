@@ -200,7 +200,10 @@ examsRouter.get('/exams', async (req, res) => {
                    OR NOT EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id)
                    OR EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id AND st.email = $3)
                     )
-              ORDER BY s.closes_at ASC NULLS LAST, s.id ASC
+              -- boardは時間での絞り込みをしていないため、終了済みの予定より
+              -- 開催中・予約中の予定を優先して表示する(そうしないと終了済みの
+              -- 最初の予定が一番締切が近い=優先されてしまう)
+              ORDER BY (s.closes_at IS NOT NULL AND s.closes_at < now()) ASC, s.closes_at ASC NULLS LAST, s.id ASC
               LIMIT 1
             ) rs ON true
        LEFT JOIN LATERAL (
@@ -1013,6 +1016,10 @@ examsRouter.get('/admin/exams/:examId/schedules/:scheduleId', requireRole('board
     exam_id: examId,
     schedule,
     target_count: targetEmails.length,
+    // 対象者を編集フォームに正しくプリフィルするための生のメール一覧。
+    // members はprofilesに行が無いemail(未ログインの対象者)を含まないため、
+    // 編集時にこちらを無視してmembersから復元すると対象者が消えてしまう
+    target_emails: targetEmails.map((t) => t.email),
     members,
   });
 });
