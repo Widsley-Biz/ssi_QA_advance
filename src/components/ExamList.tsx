@@ -4,6 +4,7 @@ import {
   listExams,
   listAttempts,
   getMyMaterialProgress,
+  getExamRetakeState,
   type ExamSummary,
   type ExamCategory,
   type AttemptSummary,
@@ -242,12 +243,7 @@ export default function ExamList() {
                   const practical = e.kind === 'practical';
                   const materialOnly = e.kind === 'material';
                   const isFormal = Boolean(e.opens_at || e.closes_at || e.max_attempts);
-                  const now = new Date();
-                  const notYetOpen = e.opens_at ? now < new Date(e.opens_at) : false;
-                  const closed = e.closes_at ? now > new Date(e.closes_at) : false;
-                  const attemptsLeft = e.max_attempts != null ? e.max_attempts - Number(e.my_attempts ?? 0) : null;
-                  const limitReached = attemptsLeft != null && attemptsLeft <= 0;
-                  const disabled = !practical && (notYetOpen || closed || limitReached);
+                  const { notYetOpen, closed, limitReached, attemptsLeft, disabled } = getExamRetakeState(e);
                   return (
                     <div key={e.id} style={styles.card}>
                       <div style={styles.cardHead}>
@@ -368,7 +364,7 @@ export default function ExamList() {
                               : closed
                                 ? '受付終了'
                                 : limitReached
-                                  ? '受験回数の上限です'
+                                  ? '受験済み'
                                   : e.my_attempts > 0
                                     ? 'もう一度受ける'
                                     : '受験する'}
@@ -548,7 +544,7 @@ const styles: Record<string, React.CSSProperties> = {
   metaValue: { fontSize: 14.5, fontWeight: 700, color: DEEP_BLUE, marginTop: 2 },
   myRow: { fontSize: 12.5, color: '#444', marginTop: 14, paddingTop: 10, borderTop: '1px solid #EEF2F4' },
   startBtn: { width: '100%', marginTop: 14, padding: '10px 0', border: 'none', borderRadius: 8, background: GRADIENT, color: DEEP_BLUE, fontSize: 14.5, fontWeight: 700, cursor: 'pointer' },
-  btnDisabled: { opacity: 0.5, cursor: 'not-allowed' },
+  btnDisabled: { background: '#D8DEE3', color: '#8A94A0', cursor: 'not-allowed' },
   subTitle: { fontSize: 19, fontWeight: 700, color: DEEP_BLUE, marginTop: 40, marginBottom: 12 },
   historyBlock: { marginTop: 18 },
   h3: { fontSize: 14.5, fontWeight: 700, color: '#555', margin: '0 0 8px' },

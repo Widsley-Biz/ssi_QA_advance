@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getAttemptResult, isExamResult, type ExamResultOrPending } from '../lib/exams';
+import { getAttemptResult, isExamResult, listExams, getExamRetakeState, type ExamResultOrPending, type ExamSummary } from '../lib/exams';
 
 const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
@@ -13,6 +13,7 @@ export default function ExamResult() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const navigate = useNavigate();
   const [result, setResult] = useState<ExamResultOrPending | null>(null);
+  const [exam, setExam] = useState<ExamSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [openAll, setOpenAll] = useState(false);
@@ -21,7 +22,13 @@ export default function ExamResult() {
     if (!attemptId) return;
     (async () => {
       try {
-        setResult(await getAttemptResult(Number(attemptId)));
+        const r = await getAttemptResult(Number(attemptId));
+        setResult(r);
+        // 「もう一度受ける」の出し分け(日程・回数上限)はExamListと同じ判定を使う。
+        // ここで見ないと、一覧では非活性のはずの試験が結果画面からは何度でも
+        // 再受験できてしまう
+        const exams = await listExams();
+        setExam(exams.find((e) => e.id === r.exam.id) ?? null);
       } catch (err) {
         setError(err instanceof Error ? err.message : '結果を取得できませんでした');
       } finally {
@@ -77,9 +84,26 @@ export default function ExamResult() {
       </div>
 
       <div style={styles.actions}>
-        <button style={styles.retryBtn} onClick={() => navigate(`/exams/${encodeURIComponent(result.exam.id)}/take`)}>
-          もう一度受ける
-        </button>
+        {(() => {
+          // exam が一覧に無い(非公開に戻った等)場合も含め、ExamListと同じ判定で
+          // 出せないときは再受験ボタンを出さない(無制限に再受験できてしまうのを防ぐ)
+          const retake = exam ? getExamRetakeState(exam) : null;
+          if (!exam || retake?.disabled) {
+            const note = !exam
+              ? '現在この試験は受験できません'
+              : retake?.limitReached
+                ? '受験回数の上限のため、再受験できません'
+                : retake?.closed
+                  ? '受付終了のため、再受験できません'
+                  : 'まだ開始していません';
+            return <span style={styles.retryDisabled}>{note}</span>;
+          }
+          return (
+            <button style={styles.retryBtn} onClick={() => navigate(`/exams/${encodeURIComponent(result.exam.id)}/take`)}>
+              もう一度受ける
+            </button>
+          );
+        })()}
         <button style={styles.listBtn} onClick={() => navigate('/exams')}>模擬試験一覧</button>
         <button style={styles.toggleBtn} onClick={() => setOpenAll((v) => !v)}>
           {openAll ? '解説をすべて閉じる' : '解説をすべて開く'}
@@ -143,6 +167,7 @@ const styles: Record<string, React.CSSProperties> = {
   heroMeta: { fontSize: 13, color: DEEP_BLUE, opacity: .75, marginTop: 8 },
   actions: { display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' },
   retryBtn: { padding: '10px 20px', border: 'none', borderRadius: 8, background: GRADIENT, color: DEEP_BLUE, fontWeight: 800, cursor: 'pointer' },
+  retryDisabled: { padding: '10px 20px', borderRadius: 8, background: '#D8DEE3', color: '#8A94A0', fontWeight: 700, fontSize: 13.5 },
   listBtn: { padding: '10px 20px', border: `1px solid ${CYAN}`, borderRadius: 8, background: '#fff', color: CYAN, fontWeight: 700, cursor: 'pointer' },
   toggleBtn: { padding: '10px 20px', border: '1px solid #CFD8DE', borderRadius: 8, background: '#fff', color: '#555', fontWeight: 700, cursor: 'pointer', marginLeft: 'auto' },
   subTitle: { fontSize: 19, fontWeight: 700, color: DEEP_BLUE, marginTop: 34, marginBottom: 4 },
