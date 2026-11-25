@@ -224,6 +224,29 @@ export interface AttemptSummary {
 }
 
 export const listExams = () => api<ExamSummary[]>('/exams');
+
+/**
+ * 「もう一度受ける」ボタンの出し分けに使う判定。ExamList(一覧)とExamResult(結果画面の
+ * 再受験ボタン)で別々にロジックを持つとズレる(結果画面だけ回数制限を見ていない、等)ため
+ * 共通化する。
+ */
+export interface ExamRetakeState {
+  notYetOpen: boolean;
+  closed: boolean;
+  limitReached: boolean;
+  attemptsLeft: number | null;
+  /** true なら「受験する/もう一度受ける」ボタンを無効化・非表示にすべき */
+  disabled: boolean;
+}
+export function getExamRetakeState(e: ExamSummary): ExamRetakeState {
+  const now = new Date();
+  const notYetOpen = e.opens_at ? now < new Date(e.opens_at) : false;
+  const closed = e.closes_at ? now > new Date(e.closes_at) : false;
+  const attemptsLeft = e.max_attempts != null ? e.max_attempts - Number(e.my_attempts ?? 0) : null;
+  const limitReached = attemptsLeft != null && attemptsLeft <= 0;
+  const disabled = e.kind !== 'practical' && (notYetOpen || closed || limitReached);
+  return { notYetOpen, closed, limitReached, attemptsLeft, disabled };
+}
 export const startExam = (examId: string) =>
   api<ExamSession>(`/exams/${encodeURIComponent(examId)}/start`, { method: 'POST' });
 export const submitExam = (attemptId: number, answers: Record<number, string[]>) =>

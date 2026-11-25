@@ -52,6 +52,12 @@ interface ResolvedSchedule {
   closesAt: Date | string | null;
   maxAttempts: number | null;
   state: 'open' | 'not_yet' | 'closed' | 'not_targeted';
+  /**
+   * emailが「対象者として名前を指定されている」か（全員対象の予定で
+   * 該当しているだけではない）。board が自分自身を受験者として扱って良いか
+   * （＝回数上限等を適用すべきか）の判定に使う。
+   */
+  explicit: boolean;
 }
 
 /**
@@ -81,18 +87,31 @@ async function resolveSchedule(
   );
 
   if (schedules.length === 0) {
+    // レガシー予定(exam_schedulesが0件)。exam_targetsで対象者を絞る
+    // （この分岐が無いと「対象者限定」の従来試験に誰でも直接APIを叩いて
+    //  入れてしまう。一覧(GET /exams)側では絞られていても、ここで
+    //  絞らないとstart等の他のエンドポイントが素通りしてしまうため必須）
+    const { rows: targetRows } = await pool.query<{ total: number; mine: number }>(
+      `SELECT count(*)::int AS total, count(*) FILTER (WHERE email = $2)::int AS mine
+         FROM exam_targets WHERE exam_id = $1`,
+      [examId, email],
+    );
+    const { total, mine } = targetRows[0];
+    if (total > 0 && mine === 0) {
+      return { hasSchedules: false, scheduleId: null, opensAt: null, closesAt: null, maxAttempts: null, state: 'not_targeted', explicit: false };
+    }
     const now = new Date();
     const opensAt = legacy.opens_at ? new Date(legacy.opens_at) : null;
     const closesAt = legacy.closes_at ? new Date(legacy.closes_at) : null;
     let state: ResolvedSchedule['state'] = 'open';
     if (opensAt && now < opensAt) state = 'not_yet';
     else if (closesAt && now > closesAt) state = 'closed';
-    return { hasSchedules: false, scheduleId: null, opensAt, closesAt, maxAttempts: legacy.max_attempts, state };
+    return { hasSchedules: false, scheduleId: null, opensAt, closesAt, maxAttempts: legacy.max_attempts, state, explicit: total > 0 && mine > 0 };
   }
 
   const mine = schedules.filter((s) => s.open_to_all || s.targets_me);
   if (mine.length === 0) {
-    return { hasSchedules: true, scheduleId: null, opensAt: null, closesAt: null, maxAttempts: null, state: 'not_targeted' };
+    return { hasSchedules: true, scheduleId: null, opensAt: null, closesAt: null, maxAttempts: null, state: 'not_targeted', explicit: false };
   }
 
   const now = new Date();
@@ -101,7 +120,7 @@ async function resolveSchedule(
   const openOnes = mine.filter(isOpen);
   if (openOnes.length > 0) {
     const s = openOnes[0]; // 既に closes_at 昇順でソート済み＝最も締切が近いもの
-    return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'open' };
+    return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'open', explicit: s.targets_me };
   }
 
   const future = mine
@@ -109,20 +128,26 @@ async function resolveSchedule(
     .sort((a, b) => new Date(a.opens_at!).getTime() - new Date(b.opens_at!).getTime());
   if (future.length > 0) {
     const s = future[0];
-    return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'not_yet' };
+    return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'not_yet', explicit: s.targets_me };
   }
 
   const past = [...mine].sort(
     (a, b) => new Date(b.closes_at ?? 0).getTime() - new Date(a.closes_at ?? 0).getTime(),
   );
   const s = past[0];
-  return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'closed' };
+  return { hasSchedules: true, scheduleId: s.id, opensAt: s.opens_at, closesAt: s.closes_at, maxAttempts: s.max_attempts, state: 'closed', explicit: s.targets_me };
 }
 
 /**
- * 試験の受験可否判定。board は常にtrue（下見・管理用）。
+ * 試験の受験可否判定。
  * member/leader は is_published・予定(レガシー or exam_schedules)・対象者を見る。
  * 対象者を1人も設定していない予定は全員対象（既存の自習試験と同じ動作）。
+ *
+ * board は下見・管理のため基本的に常にtrue。ただしboardが予定の対象者として
+ * 明示的に名前を指定されており(explicit)、かつその予定が今まさに開いている(open)
+ * 場合だけは「実際の受験者」として扱い、schedule を添えて回数上限等を適用する
+ * （boardが自分自身をテスト受験者に加えて動作確認するケースのため。それ以外の
+ *  通常の下見では、公開前・対象外・終了後の試験も問題なく閲覧できる必要がある）。
  */
 async function checkExamAccess(
   exam: {
@@ -134,7 +159,15 @@ async function checkExamAccess(
   },
   profile: Profile,
 ): Promise<{ ok: boolean; reason?: string; schedule?: ResolvedSchedule }> {
-  if (profile.role === 'board') return { ok: true };
+  if (profile.role === 'board') {
+    const resolved = await resolveSchedule(
+      exam.id,
+      { opens_at: exam.opens_at, closes_at: exam.closes_at, max_attempts: exam.max_attempts ?? null },
+      profile.email,
+    );
+    if (resolved.state === 'open' && resolved.explicit) return { ok: true, schedule: resolved };
+    return { ok: true };
+  }
   if (!exam.is_published) return { ok: false, reason: '非公開の試験です' };
 
   const resolved = await resolveSchedule(
@@ -187,24 +220,37 @@ examsRouter.get('/exams', async (req, res) => {
              SELECT true AS yes FROM exam_schedules hs0 WHERE hs0.exam_id = e.id LIMIT 1
             ) hs ON true
        LEFT JOIN LATERAL (
-             -- board は下見のため対象者で絞らず、一番締切が近い予定を見せる
-             -- (絞ってしまうと、どの予定の対象者にもなっていないboardユーザーには
-             --  日程が全て空欄に見えてしまう)
-             SELECT s.id, s.opens_at, s.closes_at, s.max_attempts
-               FROM exam_schedules s
-              WHERE s.exam_id = e.id
-                AND ($2 = 'board' OR (s.opens_at  IS NULL OR s.opens_at  <= now()))
-                AND ($2 = 'board' OR (s.closes_at IS NULL OR s.closes_at >= now()))
-                AND (
-                      $2 = 'board'
-                   OR NOT EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id)
-                   OR EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id AND st.email = $3)
-                    )
-              -- boardは時間での絞り込みをしていないため、終了済みの予定より
-              -- 開催中・予約中の予定を優先して表示する(そうしないと終了済みの
-              -- 最初の予定が一番締切が近い=優先されてしまう)
-              ORDER BY (s.closes_at IS NOT NULL AND s.closes_at < now()) ASC, s.closes_at ASC NULLS LAST, s.id ASC
-              LIMIT 1
+             -- まず通常の受験者と同じ条件(時間内・対象者)で絞った予定を探す。
+             -- boardがその予定の対象者として明示的に指定されている場合、ここで
+             -- 見つかった予定が「boardの実際の受験」として扱われる(my_attempts等が
+             -- 正しく数えられる)。見つからなければ(通常のboard下見)、2本目の
+             -- クエリで対象者・時間を無視した「一番近い予定」のプレビューに落ちる
+             (
+               SELECT s.id, s.opens_at, s.closes_at, s.max_attempts, 1 AS pri
+                 FROM exam_schedules s
+                WHERE s.exam_id = e.id
+                  AND (s.opens_at  IS NULL OR s.opens_at  <= now())
+                  AND (s.closes_at IS NULL OR s.closes_at >= now())
+                  AND (
+                        NOT EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id)
+                     OR EXISTS (SELECT 1 FROM exam_schedule_targets st WHERE st.schedule_id = s.id AND st.email = $3)
+                      )
+                ORDER BY s.closes_at ASC NULLS LAST, s.id ASC
+                LIMIT 1
+             )
+             UNION ALL
+             (
+               SELECT s.id, s.opens_at, s.closes_at, s.max_attempts, 2 AS pri
+                 FROM exam_schedules s
+                WHERE s.exam_id = e.id AND $2 = 'board'
+                -- boardは時間での絞り込みをしていないため、終了済みの予定より
+                -- 開催中・予約中の予定を優先して表示する(そうしないと終了済みの
+                -- 最初の予定が一番締切が近い=優先されてしまう)
+                ORDER BY (s.closes_at IS NOT NULL AND s.closes_at < now()) ASC, s.closes_at ASC NULLS LAST, s.id ASC
+                LIMIT 1
+             )
+             ORDER BY pri ASC
+             LIMIT 1
             ) rs ON true
        LEFT JOIN LATERAL (
              SELECT
@@ -550,12 +596,17 @@ examsRouter.post('/exams/:examId/start', async (req, res) => {
   if (!access.ok) return res.status(403).json({ error: access.reason });
   if (exam.kind !== 'written') return res.status(409).json({ error: 'not a written exam' });
 
-  // board はaccess.scheduleを持たない(checkExamAccessが早期return するため)。
-  // boardは下見のみでmax_attempts判定の対象外なので scheduleId=null のまま進めてよい
+  // 下見中のboard(access.scheduleが無い=予定の対象者として明示されていない)は
+  // schedule_id=null・回数無制限のまま進める。board が予定の対象者として明示されて
+  // いる場合は access.schedule が付き、通常の受験者と同じく回数上限を適用する。
+  // ここで `??` を使うと「予定が無制限(maxAttempts=null)」を「予定情報が無い」と
+  // 取り違えて exam.max_attempts (レガシー値。複数予定モードでは無効なはず) に
+  // フォールバックしてしまうため、schedule の有無で明示的に分岐する
   const scheduleId = access.schedule?.scheduleId ?? null;
-  const maxAttempts = access.schedule?.maxAttempts ?? exam.max_attempts;
+  const maxAttempts = access.schedule ? access.schedule.maxAttempts : exam.max_attempts;
+  const isPreviewBoard = p.role === 'board' && !access.schedule;
 
-  if (maxAttempts != null && p.role !== 'board') {
+  if (maxAttempts != null && !isPreviewBoard) {
     const { rows: cnt } = await pool.query(
       `SELECT count(*)::int AS n FROM exam_attempts
         WHERE user_id = $1 AND exam_id = $2 AND status = 'submitted'
