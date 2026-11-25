@@ -308,6 +308,73 @@ export const putAdminExamTargets = (examId: string, emails: string[]) =>
     body: JSON.stringify({ emails }),
   });
 
+/**
+ * 複数予定(exam_schedules)。1試験に複数の開催回(予定)を持たせ、
+ * それぞれ別の日程・受験回数上限・対象者を設定できるようにしたもの。
+ * 1件もまだ作っていない試験は、従来通り AdminExamSchedule の
+ * 単一スケジュール(opens_at等)で動く。
+ */
+export interface ExamScheduleSummary {
+  id: number;
+  label: string;
+  opens_at: string | null;
+  closes_at: string | null;
+  max_attempts: number | null;
+  target_count: number;
+  attempt_count: number;
+  is_past: boolean;
+}
+export interface ExamScheduleMember {
+  user_id: string;
+  email: string;
+  display_name: string;
+  attempt_id: number | null;
+  status: 'in_progress' | 'submitted' | null;
+  earned_points: number | null;
+  total_points: number | null;
+  passed: boolean | null;
+  submitted_at: string | null;
+}
+export interface ExamScheduleDetail {
+  exam_id: string;
+  schedule: { id: number; label: string; opens_at: string | null; closes_at: string | null; max_attempts: number | null };
+  target_count: number;
+  members: ExamScheduleMember[];
+}
+export interface ExamScheduleBody {
+  label: string;
+  opens_at: string | null;
+  closes_at: string | null;
+  max_attempts: number | null;
+  emails: string[];
+}
+
+export const listAdminExamSchedules = (examId: string) =>
+  api<ExamScheduleSummary[]>(`/admin/exams/${encodeURIComponent(examId)}/schedules`);
+export const getAdminExamScheduleDetail = (examId: string, scheduleId: number) =>
+  api<ExamScheduleDetail>(`/admin/exams/${encodeURIComponent(examId)}/schedules/${scheduleId}`);
+export const createAdminExamSchedule = (examId: string, body: ExamScheduleBody) =>
+  api<{ id: number; label: string; opens_at: string | null; closes_at: string | null; max_attempts: number | null; target_emails: string[] }>(
+    `/admin/exams/${encodeURIComponent(examId)}/schedules`,
+    { method: 'POST', body: JSON.stringify(body) },
+  );
+export const updateAdminExamSchedule = (examId: string, scheduleId: number, body: ExamScheduleBody) =>
+  api<{ id: number; label: string; opens_at: string | null; closes_at: string | null; max_attempts: number | null; target_emails: string[] }>(
+    `/admin/exams/${encodeURIComponent(examId)}/schedules/${scheduleId}`,
+    { method: 'PUT', body: JSON.stringify(body) },
+  );
+export const deleteAdminExamSchedule = async (examId: string, scheduleId: number) => {
+  const authHeader = await getAuthHeader();
+  const res = await fetch(`${API_URL}/admin/exams/${encodeURIComponent(examId)}/schedules/${scheduleId}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeader },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error ?? '削除に失敗しました');
+  }
+};
+
 /** 教材・実技共通の案内ページ。kindの制限は無い（practical専用のPracticalDetailとは別物） */
 export interface GuideDetail {
   exam: {
