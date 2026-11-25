@@ -286,6 +286,8 @@ export interface AdminExamSchedule {
   max_attempts: number | null;
   materials: ExamMaterial[] | null;
   target_emails: string[];
+  /** 複数予定(exam_schedules)が1件も無い試験の、提出済み受験数(schedule_id IS NULL) */
+  attempt_count: number;
 }
 export const getAdminExamSchedule = (examId: string) =>
   api<AdminExamSchedule>(`/admin/exams/${encodeURIComponent(examId)}`);
@@ -321,7 +323,10 @@ export interface ExamScheduleSummary {
   closes_at: string | null;
   max_attempts: number | null;
   target_count: number;
+  /** 提出済みの受験数(表示用) */
   attempt_count: number;
+  /** 削除可否(提出済み・受験中を問わず受験記録が無い場合のみtrue)。DELETE側と同じ基準 */
+  deletable: boolean;
   is_past: boolean;
 }
 export interface ExamScheduleMember {
@@ -355,6 +360,11 @@ export const listAdminExamSchedules = (examId: string) =>
   api<ExamScheduleSummary[]>(`/admin/exams/${encodeURIComponent(examId)}/schedules`);
 export const getAdminExamScheduleDetail = (examId: string, scheduleId: number) =>
   api<ExamScheduleDetail>(`/admin/exams/${encodeURIComponent(examId)}/schedules/${scheduleId}`);
+/** 複数予定が1件も無い試験の「予定」詳細(exam_targets + schedule_id IS NULLの受験記録から組み立てる) */
+export const getAdminExamLegacyResults = (examId: string) =>
+  api<{ exam_id: string; target_count: number; target_emails: string[]; members: ExamScheduleMember[] }>(
+    `/admin/exams/${encodeURIComponent(examId)}/schedule-legacy-results`,
+  );
 export const createAdminExamSchedule = (examId: string, body: ExamScheduleBody) =>
   api<{ id: number; label: string; opens_at: string | null; closes_at: string | null; max_attempts: number | null; target_emails: string[] }>(
     `/admin/exams/${encodeURIComponent(examId)}/schedules`,
