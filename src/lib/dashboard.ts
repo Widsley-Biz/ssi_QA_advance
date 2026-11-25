@@ -36,6 +36,7 @@ export interface ExamEvent {
   display_name: string;
   team_id: number | null;
   day: string; // 'YYYY-MM-DD'（JST）
+  submitted_at: string; // 提出日時(ISO)
   exam_id: string;
   exam_name: string;
   kind: 'written' | 'practical';
@@ -48,6 +49,7 @@ export interface SkillmapEvent {
   display_name: string;
   team_id: number | null;
   day: string;
+  submitted_at: string;
   course_id: string;
   course_name: string;
 }
@@ -55,6 +57,8 @@ export interface SkillmapEvent {
 export interface MaterialDailyRow {
   user_id: string;
   day: string;
+  /** その日のうち最後にページを既読した日時(ISO) */
+  last_viewed_at: string;
   pages: number;
 }
 
