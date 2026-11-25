@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { fetchProfiles, fetchTeams, fetchCourses, fetchAssessments, fetchAnswers, fetchSkills, fetchLevels, isInTeam } from '../lib/data';
@@ -30,8 +31,10 @@ function profileTeamIds(p: Profile): (number | string)[] {
   return p.team_id != null ? [p.team_id] : [];
 }
 
-type SectionKey = 'skillmap' | 'courseProgress' | 'daily' | 'charts' | 'admin';
+type SectionKey = 'skillmap' | 'courseProgress' | 'examResults' | 'daily' | 'charts' | 'admin';
 const COLLAPSE_STORAGE_KEY = 'dashboard-collapsed-sections';
+/** 試験結果カードの選択中試験。/exams/result/:id への遷移→戻るで選択が消えないように保持する */
+const SELECTED_EXAM_STORAGE_KEY = 'dashboard-selected-exam';
 
 function loadCollapsedSections(): Record<string, boolean> {
   try {
@@ -149,6 +152,7 @@ function SectionSearch({ value, onChange, placeholder }: { value: string; onChan
 
 export default function BoardView() {
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [loading, setLoading] = useState(true);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -160,17 +164,26 @@ export default function BoardView() {
   const [answersMap, setAnswersMap] = useState<Record<number, Answer[]>>({});
   const [examReport, setExamReport] = useState<ExamReportCell[]>([]);
   const [examKindMap, setExamKindMap] = useState<Map<string, ExamSummary['kind']>>(new Map());
+  const [exams, setExams] = useState<ExamSummary[]>([]);
   const [materialsSummary, setMaterialsSummary] = useState<MaterialsSummaryRow[]>([]);
   const [dailyActivity, setDailyActivity] = useState<DailyActivity | null>(null);
 
   const [selectedCourse, setSelectedCourse] = useState<string>('');
   const [selectedTeam, setSelectedTeam] = useState<number | 'all' | 'unassigned'>('all');
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const [selectedExamId, setSelectedExamId] = useState<string>(() => {
+    try {
+      return localStorage.getItem(SELECTED_EXAM_STORAGE_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  });
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(loadCollapsedSections);
 
-  // デイリー学習進捗(テーブル)のソート・検索状態(フックなのでローディング中の
-  // 早期returnより前で、無条件に呼び出す必要がある)
+  // デイリー学習進捗・試験結果(どちらもテーブル)のソート・検索状態(フックなので
+  // ローディング中の早期returnより前で、無条件に呼び出す必要がある)
   const dailySort = useSortAndSearchState('when');
+  const examResultSort = useSortAndSearchState('name');
 
   const toggleSection = (key: SectionKey) => {
     setCollapsedSections((prev) => {
@@ -210,14 +223,15 @@ export default function BoardView() {
       // 試験レポート・教材進捗・デイリー活動はexams.ts系API専用(デモモード非対応)。
       // デモモードやAPI未設定時でもスキルマップ側は使えるよう、ここだけ個別にcatchする
       try {
-        const [report, exams, matSummary, activity] = await Promise.all([
+        const [report, examList, matSummary, activity] = await Promise.all([
           getExamReport(),
           listExams(),
           fetchMaterialsSummary(),
           fetchDailyActivity(90),
         ]);
         setExamReport(report);
-        setExamKindMap(new Map(exams.map((e) => [e.id, e.kind])));
+        setExamKindMap(new Map(examList.map((e) => [e.id, e.kind])));
+        setExams(examList);
         setMaterialsSummary(matSummary);
         setDailyActivity(activity);
       } catch (err) {
@@ -268,6 +282,7 @@ export default function BoardView() {
     : selectedTeam === 'unassigned'
       ? unassignedProfiles
       : profiles.filter((p) => isInTeam(p, selectedTeam));
+  const filteredIds = new Set(filteredProfiles.map((p) => p.id));
 
   const activeCourse = courses.find(c => c.id === selectedCourse);
 
@@ -393,6 +408,50 @@ export default function BoardView() {
     return new Date(Math.max(...dates)).toLocaleDateString('ja-JP');
   }
 
+  // ---- 試験結果(社内認定試験を1つ選んで、受験者ごとの結果を見る) ----
+  // 社内認定試験(category='certification')のみを対象にする。/admin/exam-scheduleと
+  // 同じ絞り込み(模擬試験・学習教材はここでは扱わない)
+  const certificationExams = exams
+    .filter((e) => e.category === 'certification')
+    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+  const activeExamResultId = selectedExamId || certificationExams[0]?.id || '';
+  const selectExamResult = (id: string) => {
+    setSelectedExamId(id);
+    try {
+      localStorage.setItem(SELECTED_EXAM_STORAGE_KEY, id);
+    } catch {
+      // プライベートウィンドウ等で失敗しても表示には影響しない
+    }
+  };
+
+  type ExamResultRow = {
+    userId: string; name: string; team: string;
+    attemptCount: number; earnedPoints: number | null; totalPoints: number | null;
+    passed: boolean | null; submittedAt: string | null;
+  };
+  const examResultCandidates = examReport.filter(
+    (c) => c.exam_id === activeExamResultId && filteredIds.has(c.user_id),
+  );
+  const examResultExcludedCount = examResultCandidates.filter((c) => c.excluded).length;
+  const examResultRawRows: ExamResultRow[] = examResultCandidates
+    .filter((c) => !c.excluded)
+    .map((c) => ({
+      userId: c.user_id, name: c.display_name, team: teamNameOf(profiles.find((p) => p.id === c.user_id) ?? ({} as Profile)),
+      attemptCount: c.attempt_count, earnedPoints: c.earned_points, totalPoints: c.total_points,
+      passed: c.passed, submittedAt: c.submitted_at,
+    }));
+  const examResultRows = applySortAndSearch(examResultRawRows, examResultSort, {
+    searchText: (r) => `${r.name} ${r.team}`,
+    sorters: {
+      name: (r) => r.name,
+      team: (r) => r.team,
+      attemptCount: (r) => r.attemptCount,
+      score: (r) => r.earnedPoints,
+      passed: (r) => (r.passed == null ? null : r.passed ? 1 : 0),
+      submittedAt: (r) => (r.submittedAt ? new Date(r.submittedAt).getTime() : null),
+    },
+  });
+
   // ---- KPIタイル ----
   const writtenAttempted = filteredProfiles.filter((p) => writtenBadgeFor(p.id).label !== '未受験');
   const writtenPassed = writtenAttempted.filter((p) => writtenBadgeFor(p.id).label.includes('合格'));
@@ -406,7 +465,6 @@ export default function BoardView() {
   // key: 同一ユーザーが同時刻帯に複数件出すことは無いはずだが、念のため
   // userId+when+textで一意なキーを作る(React keyおよびドリルダウン開閉の対象行特定に使う)
   type FeedEvent = { key: string; userId: string; name: string; team: string; when: string; text: string; dot: string };
-  const filteredIds = new Set(filteredProfiles.map((p) => p.id));
   const feedEvents: FeedEvent[] = [
     ...dailyActivity.examEvents
       .filter((e) => filteredIds.has(e.user_id))
@@ -499,18 +557,6 @@ export default function BoardView() {
               onClick={() => setSelectedTeam('unassigned')}
               style={{ ...styles.chip, ...(selectedTeam === 'unassigned' ? styles.chipActive : {}) }}
             >未所属</span>
-          </div>
-          <div>
-            <label style={styles.filterLabel}>コース:</label>
-            <select
-              value={selectedCourse}
-              onChange={(e) => setSelectedCourse(e.target.value)}
-              style={styles.select}
-            >
-              {courses.map(c => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
           </div>
         </div>
 
@@ -687,7 +733,113 @@ export default function BoardView() {
           )}
         </div>
 
-        {/* カード3: デイリー学習進捗 */}
+        {/* カード3: 試験結果(社内認定試験を1つ選んで受験者一覧) */}
+        <div style={styles.section}>
+          <SectionHeader
+            title="試験結果"
+            note="試験を選択→氏名クリックで個人推移・行クリックで詳細"
+            collapsed={!!collapsedSections.examResults}
+            onToggle={() => toggleSection('examResults')}
+          />
+          {!collapsedSections.examResults && (
+            certificationExams.length === 0 ? (
+              <p style={{ color: '#999', fontSize: 13 }}>社内認定試験がまだありません</p>
+            ) : (
+              <>
+                <p style={styles.hint}>
+                  管理者(board)は集計対象外です。対象者限定の試験で対象外のメンバーは一覧から除外されます
+                  {examResultExcludedCount > 0 && `(現在のチーム絞り込みで${examResultExcludedCount}名が対象外)`}。
+                </p>
+                <div style={{ marginBottom: 12 }}>
+                  <select
+                    value={activeExamResultId}
+                    onChange={(e) => selectExamResult(e.target.value)}
+                    style={styles.select}
+                  >
+                    {certificationExams.map((e) => (
+                      <option key={e.id} value={e.id}>{e.group_name ? `${e.group_name} / ` : ''}{e.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <SectionSearch value={examResultSort.query} onChange={examResultSort.setQuery} />
+                <div style={styles.scrollBox}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <SortableTh label="氏名" sortKey="name" activeKey={examResultSort.sortKey} dir={examResultSort.sortDir} onClick={examResultSort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="チーム" sortKey="team" activeKey={examResultSort.sortKey} dir={examResultSort.sortDir} onClick={examResultSort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="受験回数" sortKey="attemptCount" activeKey={examResultSort.sortKey} dir={examResultSort.sortDir} onClick={examResultSort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="最高得点" sortKey="score" activeKey={examResultSort.sortKey} dir={examResultSort.sortDir} onClick={examResultSort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="判定" sortKey="passed" activeKey={examResultSort.sortKey} dir={examResultSort.sortDir} onClick={examResultSort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="提出日時" sortKey="submittedAt" activeKey={examResultSort.sortKey} dir={examResultSort.sortDir} onClick={examResultSort.handleSortClick} style={styles.thSticky} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {examResultRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} style={{ textAlign: 'center', color: '#999', padding: 24 }}>
+                            該当するメンバーがいません
+                          </td>
+                        </tr>
+                      ) : (
+                        examResultRows.map((r) => (
+                          <React.Fragment key={r.userId}>
+                            <tr
+                              style={{ ...styles.tr, cursor: r.attemptCount > 0 ? 'pointer' : 'default' }}
+                              onClick={() => {
+                                const cell = examResultCandidates.find((c) => c.user_id === r.userId && c.attempt_id != null);
+                                if (cell) navigate(`/exams/result/${cell.attempt_id}`);
+                              }}
+                            >
+                              <td style={{ ...styles.td, ...styles.nameLink, fontWeight: 600, color: DEEP_BLUE }}
+                                onClick={(e) => { e.stopPropagation(); setSelectedPerson(selectedPerson === r.userId ? null : r.userId); }}>
+                                {r.name}
+                              </td>
+                              <td style={{ ...styles.td, color: r.team === '未所属' ? MAGENTA : '#333' }}>{r.team}</td>
+                              <td style={styles.td}>{r.attemptCount}回</td>
+                              <td style={styles.td}>
+                                {r.attemptCount === 0 ? (
+                                  <span style={{ color: '#999' }}>未受験</span>
+                                ) : (
+                                  `${r.earnedPoints} / ${r.totalPoints}点`
+                                )}
+                              </td>
+                              <td style={styles.td}>
+                                {r.passed == null ? '-' : (
+                                  <span style={{ ...styles.badge, background: r.passed ? '#E8F7F1' : '#FDEBEF', color: r.passed ? '#0a7a5a' : '#c0185a' }}>
+                                    {r.passed ? '合格' : '不合格'}
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ ...styles.td, color: '#999' }}>
+                                {r.submittedAt ? new Date(r.submittedAt).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '-'}
+                              </td>
+                            </tr>
+                            {selectedPerson === r.userId && (
+                              <tr>
+                                <td colSpan={6} style={{ padding: '8px 4px 16px' }}>
+                                  <DrilldownChart
+                                    userId={r.userId}
+                                    displayName={r.name}
+                                    teamLabel={r.team}
+                                    activity={dailyActivity}
+                                    onClose={() => setSelectedPerson(null)}
+                                  />
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )
+          )}
+        </div>
+
+        {/* カード4: デイリー学習進捗 */}
         <div style={styles.section}>
           <SectionHeader
             title="デイリー学習進捗"
@@ -764,6 +916,19 @@ export default function BoardView() {
             onToggle={() => toggleSection('charts')}
           />
           {!collapsedSections.charts && (
+          <>
+          <div style={{ marginBottom: 16 }}>
+            <label style={styles.filterLabel}>コース(下のグラフの対象):</label>
+            <select
+              value={selectedCourse}
+              onChange={(e) => setSelectedCourse(e.target.value)}
+              style={styles.select}
+            >
+              {courses.map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
           <div style={styles.chartsRow}>
             {activeCourse?.type === 'leveled' && levelDistribution.length > 0 && (
               <div style={{ flex: 1 }}>
@@ -796,6 +961,7 @@ export default function BoardView() {
               <p style={{ fontSize: 11, color: '#9fb3bd', marginTop: 8 }}>チーム未所属は上の表で個別に確認できます(平均には含めません)</p>
             </div>
           </div>
+          </>
           )}
         </div>
 
@@ -967,6 +1133,12 @@ const styles: Record<string, React.CSSProperties> = {
   sectionNote: {
     fontSize: 11,
     color: '#9fb3bd',
+  },
+  hint: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 14,
+    lineHeight: 1.6,
   },
   collapseToggle: {
     cursor: 'pointer',

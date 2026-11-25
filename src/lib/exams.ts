@@ -274,6 +274,8 @@ export interface ExamReportCell {
   total_points: number | null;
   passed: boolean | null;
   submitted_at: string | null;
+  /** 提出済みの受験回数(ベストスコアだけでなく全件) */
+  attempt_count: number;
 }
 export const getExamReport = () => api<ExamReportCell[]>('/exams/report');
 
