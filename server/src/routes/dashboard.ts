@@ -30,9 +30,9 @@ dashboardRouter.get('/dashboard/materials-summary', requireRole('board'), async 
 
 /**
  * 管理者向け：デイリー学習進捗・個人別推移の元データ。
- *   examEvents      … 筆記/実技試験の提出イベント(日付はJST)
- *   skillmapEvents  … 旧コース(スキルマップ)の提出イベント(日付はJST)
- *   materialDaily   … 教材ページを新しく読んだ日ごとの件数(ユーザー別、日付はJST)
+ *   examEvents      … 筆記/実技試験の提出イベント(日付・提出日時はJST)
+ *   skillmapEvents  … 旧コース(スキルマップ)の提出イベント(日付・提出日時はJST)
+ *   materialDaily   … 教材ページを新しく読んだ日ごとの件数(ユーザー別、日付・最終既読日時はJST)
  *   recordStart     … material_progress_logの最古のレコード日時(無ければnull)。
  *                      これより前の教材閲覧は記録されていないことを示すマーカーに使う
  * 管理者(role=board)・退職者は除外。
@@ -43,7 +43,7 @@ dashboardRouter.get('/dashboard/daily-activity', requireRole('board'), async (re
   const [examEvents, skillmapEvents, materialDaily, recordStart] = await Promise.all([
     pool.query(
       `SELECT a.user_id, p.display_name, p.team_id,
-              (a.submitted_at AT TIME ZONE 'Asia/Tokyo')::date AS day,
+              (a.submitted_at AT TIME ZONE 'Asia/Tokyo')::date AS day, a.submitted_at,
               e.id AS exam_id, e.name AS exam_name, e.kind, a.passed, a.earned_points
          FROM exam_attempts a
          JOIN exams e ON e.id = a.exam_id
@@ -56,7 +56,7 @@ dashboardRouter.get('/dashboard/daily-activity', requireRole('board'), async (re
     ),
     pool.query(
       `SELECT ass.user_id, p.display_name, p.team_id,
-              (ass.submitted_at AT TIME ZONE 'Asia/Tokyo')::date AS day,
+              (ass.submitted_at AT TIME ZONE 'Asia/Tokyo')::date AS day, ass.submitted_at,
               c.id AS course_id, c.name AS course_name
          FROM assessments ass
          JOIN courses c ON c.id = ass.course_id
@@ -67,7 +67,8 @@ dashboardRouter.get('/dashboard/daily-activity', requireRole('board'), async (re
       [days],
     ),
     pool.query(
-      `SELECT l.user_id, (l.viewed_at AT TIME ZONE 'Asia/Tokyo')::date AS day, count(*)::int AS pages
+      `SELECT l.user_id, (l.viewed_at AT TIME ZONE 'Asia/Tokyo')::date AS day,
+              max(l.viewed_at) AS last_viewed_at, count(*)::int AS pages
          FROM material_progress_log l
          JOIN profiles p ON p.id = l.user_id
         WHERE p.role NOT IN ('retired', 'board')

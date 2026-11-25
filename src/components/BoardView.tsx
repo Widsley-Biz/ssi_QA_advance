@@ -57,6 +57,96 @@ function SectionHeader({ title, note, collapsed, onToggle }: {
   );
 }
 
+/**
+ * 行ベースのセクション(スキルマップ達成率・講座学習進捗・デイリー学習進捗・試験結果)
+ * 共通の検索・ソート。値なし(null)は昇順・降順どちらでも常に末尾に来る。
+ * 文字列の比較は日本語ロケールで行う。同じ列を3回目クリックするとソート解除(今日のまま)。
+ */
+type SortDir = 'asc' | 'desc';
+
+function compareNullable(a: string | number | null, b: string | number | null): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), 'ja');
+}
+
+/**
+ * 検索語・ソート列・ソート方向の状態だけを持つ(計算はしない)。
+ * BoardViewはローディング中に早期returnするため、実データに依存する行配列を
+ * 引数に取る形のフックにすると「ローディング中はフックを呼ばない」ことになり
+ * Hooksのルール違反になる。状態と計算を分離し、計算(applySortAndSearch)は
+ * 早期returnの後、実データが揃ってから呼び出す
+ */
+function useSortAndSearchState(initialSortKey: string | null = null) {
+  const [query, setQuery] = useState('');
+  const [sortKey, setSortKey] = useState<string | null>(initialSortKey);
+  const [sortDir, setSortDir] = useState<SortDir>(initialSortKey ? 'desc' : 'asc');
+
+  const handleSortClick = (key: string) => {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir('asc');
+    } else if (sortDir === 'asc') {
+      setSortDir('desc');
+    } else {
+      setSortKey(null);
+      setSortDir('asc');
+    }
+  };
+
+  return { query, setQuery, sortKey, sortDir, handleSortClick };
+}
+
+function applySortAndSearch<T>(
+  rows: T[],
+  state: { query: string; sortKey: string | null; sortDir: SortDir },
+  opts: { searchText: (row: T) => string; sorters: Record<string, (row: T) => string | number | null> },
+): T[] {
+  const q = state.query.trim().toLowerCase();
+  const filtered = q ? rows.filter((r) => opts.searchText(r).toLowerCase().includes(q)) : rows;
+
+  const getValue = state.sortKey ? opts.sorters[state.sortKey] : null;
+  if (!getValue) return filtered;
+
+  const withValue = filtered.filter((r) => getValue(r) != null);
+  const withNull = filtered.filter((r) => getValue(r) == null);
+  withValue.sort((a, b) => {
+    const cmp = compareNullable(getValue(a), getValue(b));
+    return state.sortDir === 'asc' ? cmp : -cmp;
+  });
+  return [...withValue, ...withNull];
+}
+
+function SortableTh({
+  label, sortKey, activeKey, dir, onClick, style,
+}: {
+  label: string; sortKey: string; activeKey: string | null; dir: SortDir; onClick: (key: string) => void; style?: React.CSSProperties;
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <th
+      style={{ ...style, cursor: 'pointer', userSelect: 'none' }}
+      onClick={() => onClick(sortKey)}
+      title="クリックで並べ替え"
+    >
+      {label}{active ? (dir === 'asc' ? ' ▲' : ' ▼') : ''}
+    </th>
+  );
+}
+
+function SectionSearch({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder ?? '氏名・チームで検索'}
+      style={styles.sectionSearch}
+    />
+  );
+}
+
 export default function BoardView() {
   const { user } = useAuth();
 
@@ -77,6 +167,10 @@ export default function BoardView() {
   const [selectedTeam, setSelectedTeam] = useState<number | 'all' | 'unassigned'>('all');
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(loadCollapsedSections);
+
+  // デイリー学習進捗(テーブル)のソート・検索状態(フックなのでローディング中の
+  // 早期returnより前で、無条件に呼び出す必要がある)
+  const dailySort = useSortAndSearchState('when');
 
   const toggleSection = (key: SectionKey) => {
     setCollapsedSections((prev) => {
@@ -308,47 +402,49 @@ export default function BoardView() {
     return pcts.length > 0 ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : 0;
   })();
 
-  // ---- デイリー学習進捗 ----
-  const todayStr = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
-  const yesterdayStr = (() => {
-    const d = new Date(`${todayStr}T00:00:00+09:00`);
-    d.setDate(d.getDate() - 1);
-    return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(d);
-  })();
-
-  type FeedEvent = { userId: string; name: string; team: string; day: string; text: string; dot: string };
+  // ---- デイリー学習進捗(テーブル) ----
+  // key: 同一ユーザーが同時刻帯に複数件出すことは無いはずだが、念のため
+  // userId+when+textで一意なキーを作る(React keyおよびドリルダウン開閉の対象行特定に使う)
+  type FeedEvent = { key: string; userId: string; name: string; team: string; when: string; text: string; dot: string };
   const filteredIds = new Set(filteredProfiles.map((p) => p.id));
   const feedEvents: FeedEvent[] = [
     ...dailyActivity.examEvents
       .filter((e) => filteredIds.has(e.user_id))
       .map((e) => ({
+        key: `exam-${e.user_id}-${e.exam_id}-${e.submitted_at}`,
         userId: e.user_id, name: e.display_name, team: teamNameOf(profiles.find((p) => p.id === e.user_id) ?? ({} as Profile)),
-        day: e.day,
+        when: e.submitted_at,
         text: e.kind === 'practical' ? `${e.exam_name}のPRを提出` : `${e.exam_name}に${e.passed ? '合格' : '不合格'}(${e.earned_points}点)`,
         dot: e.kind === 'practical' ? CYAN : e.passed ? '#0a7a5a' : '#c0185a',
       })),
     ...dailyActivity.skillmapEvents
       .filter((e) => filteredIds.has(e.user_id))
       .map((e) => ({
+        key: `skillmap-${e.user_id}-${e.course_id}-${e.submitted_at}`,
         userId: e.user_id, name: e.display_name, team: teamNameOf(profiles.find((p) => p.id === e.user_id) ?? ({} as Profile)),
-        day: e.day, text: `スキルマップ「${e.course_name}」を提出`, dot: MAGENTA,
+        when: e.submitted_at, text: `スキルマップ「${e.course_name}」を提出`, dot: MAGENTA,
       })),
     ...dailyActivity.materialDaily
       .filter((r) => filteredIds.has(r.user_id))
       .map((r) => {
         const p = profiles.find((pr) => pr.id === r.user_id);
         return {
+          key: `material-${r.user_id}-${r.day}`,
           userId: r.user_id, name: p?.display_name ?? r.user_id, team: p ? teamNameOf(p) : '-',
-          day: r.day, text: `教材を${r.pages}ページ新しく既読`, dot: SEA_GREEN,
+          when: r.last_viewed_at, text: `教材を${r.pages}ページ新しく既読`, dot: SEA_GREEN,
         };
       }),
-  ].sort((a, b) => (a.day < b.day ? 1 : -1));
+  ];
 
-  const feedGroups = [
-    { label: `今日(${todayStr.slice(5)})`, events: feedEvents.filter((e) => e.day === todayStr) },
-    { label: `前日(${yesterdayStr.slice(5)})`, events: feedEvents.filter((e) => e.day === yesterdayStr) },
-    { label: 'それ以前', events: feedEvents.filter((e) => e.day < yesterdayStr) },
-  ].filter((g) => g.events.length > 0);
+  const dailyRows = applySortAndSearch(feedEvents, dailySort, {
+    searchText: (e) => `${e.name} ${e.team}`,
+    sorters: {
+      name: (e) => e.name,
+      team: (e) => e.team,
+      text: (e) => e.text,
+      when: (e) => new Date(e.when).getTime(),
+    },
+  });
 
   const selectedProfile = selectedPerson ? profiles.find((p) => p.id === selectedPerson) : null;
 
@@ -427,7 +523,7 @@ export default function BoardView() {
             onToggle={() => toggleSection('skillmap')}
           />
           {!collapsedSections.skillmap && (
-          <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '65vh' }}>
+          <div style={styles.scrollBox}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
@@ -532,18 +628,18 @@ export default function BoardView() {
             onToggle={() => toggleSection('courseProgress')}
           />
           {!collapsedSections.courseProgress && (
-          <div style={{ overflowX: 'auto' }}>
+          <div style={styles.scrollBox}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr>
-                  <th style={styles.th}>氏名</th>
-                  <th style={styles.th}>チーム</th>
-                  <th style={styles.th}>座学模擬</th>
-                  <th style={styles.th}>実技模擬</th>
+                  <th style={styles.thSticky}>氏名</th>
+                  <th style={styles.thSticky}>チーム</th>
+                  <th style={styles.thSticky}>座学模擬</th>
+                  <th style={styles.thSticky}>実技模擬</th>
                   {materialGroupNames.map((g) => (
-                    <th key={g} style={styles.th}>{g}</th>
+                    <th key={g} style={styles.thSticky}>{g}</th>
                   ))}
-                  <th style={styles.th}>最終更新</th>
+                  <th style={styles.thSticky}>最終更新</th>
                 </tr>
               </thead>
               <tbody>
@@ -595,47 +691,70 @@ export default function BoardView() {
         <div style={styles.section}>
           <SectionHeader
             title="デイリー学習進捗"
-            note="氏名クリックで個人推移"
+            note="氏名クリックで個人推移・列見出しクリックで並べ替え"
             collapsed={!!collapsedSections.daily}
             onToggle={() => toggleSection('daily')}
           />
-          {!collapsedSections.daily && (feedGroups.length === 0 ? (
-            <p style={{ color: '#999', fontSize: 13 }}>直近90日に記録された活動はありません</p>
-          ) : (
-            feedGroups.map((grp) => (
-              <div key={grp.label}>
-                <span style={styles.dayGroupLabel}>{grp.label}</span>
-                {grp.events.map((ev, i) => (
-                  <React.Fragment key={`${ev.userId}-${i}`}>
-                    <div style={styles.feedRow}>
-                      <span style={{ ...styles.feedDot, background: ev.dot }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <span
-                          style={{ ...styles.nameLink, fontSize: 13, fontWeight: 700, color: DEEP_BLUE }}
-                          onClick={() => setSelectedPerson(selectedPerson === ev.userId ? null : ev.userId)}
-                        >
-                          {ev.name}
-                        </span>
-                        <span style={{ fontSize: 11, color: '#9fb3bd', marginLeft: 6 }}>{ev.team}</span>
-                        <div style={{ fontSize: 12, color: '#555', marginTop: 1 }}>{ev.text}</div>
-                      </div>
-                    </div>
-                    {selectedPerson === ev.userId && (
-                      <div style={{ padding: '0 0 16px 22px' }}>
-                        <DrilldownChart
-                          userId={ev.userId}
-                          displayName={ev.name}
-                          teamLabel={ev.team}
-                          activity={dailyActivity}
-                          onClose={() => setSelectedPerson(null)}
-                        />
-                      </div>
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-            ))
-          ))}
+          {!collapsedSections.daily && (
+            feedEvents.length === 0 ? (
+              <p style={{ color: '#999', fontSize: 13 }}>直近90日に記録された活動はありません</p>
+            ) : (
+              <>
+                <SectionSearch value={dailySort.query} onChange={dailySort.setQuery} />
+                <div style={styles.scrollBox}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr>
+                        <SortableTh label="氏名" sortKey="name" activeKey={dailySort.sortKey} dir={dailySort.sortDir} onClick={dailySort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="チーム" sortKey="team" activeKey={dailySort.sortKey} dir={dailySort.sortDir} onClick={dailySort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="学習内容" sortKey="text" activeKey={dailySort.sortKey} dir={dailySort.sortDir} onClick={dailySort.handleSortClick} style={styles.thSticky} />
+                        <SortableTh label="学習日時" sortKey="when" activeKey={dailySort.sortKey} dir={dailySort.sortDir} onClick={dailySort.handleSortClick} style={styles.thSticky} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} style={{ textAlign: 'center', color: '#999', padding: 24 }}>
+                            該当する活動がありません
+                          </td>
+                        </tr>
+                      ) : (
+                        dailyRows.map((ev) => (
+                          <React.Fragment key={ev.key}>
+                            <tr style={styles.tr}>
+                              <td style={{ ...styles.td, ...styles.nameLink, fontWeight: 600, color: DEEP_BLUE }}
+                                onClick={() => setSelectedPerson(selectedPerson === ev.userId ? null : ev.userId)}>
+                                <span style={{ ...styles.feedDot, background: ev.dot, display: 'inline-block', marginRight: 8 }} />
+                                {ev.name}
+                              </td>
+                              <td style={{ ...styles.td, color: ev.team === '未所属' ? MAGENTA : '#333' }}>{ev.team}</td>
+                              <td style={styles.td}>{ev.text}</td>
+                              <td style={{ ...styles.td, color: '#999' }}>
+                                {new Date(ev.when).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}
+                              </td>
+                            </tr>
+                            {selectedPerson === ev.userId && (
+                              <tr>
+                                <td colSpan={4} style={{ padding: '8px 4px 16px' }}>
+                                  <DrilldownChart
+                                    userId={ev.userId}
+                                    displayName={ev.name}
+                                    teamLabel={ev.team}
+                                    activity={dailyActivity}
+                                    onClose={() => setSelectedPerson(null)}
+                                  />
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )
+          )}
         </div>
 
         <div style={styles.section}>
@@ -863,22 +982,20 @@ const styles: Record<string, React.CSSProperties> = {
     color: DEEP_BLUE,
     margin: '0 0 12px',
   },
-  dayGroupLabel: {
-    fontSize: 12,
-    fontWeight: 800,
-    color: DEEP_BLUE,
-    background: '#F4F8FA',
-    padding: '4px 10px',
-    borderRadius: 6,
-    display: 'inline-block',
-    margin: '14px 0 4px',
+  scrollBox: {
+    overflowX: 'auto',
+    overflowY: 'auto',
+    maxHeight: '65vh',
   },
-  feedRow: {
-    display: 'flex',
-    gap: 14,
-    alignItems: 'flex-start',
-    padding: '10px 0',
-    borderBottom: '1px solid #f3f6f7',
+  sectionSearch: {
+    width: '100%',
+    maxWidth: 320,
+    padding: '8px 12px',
+    fontSize: 13,
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    marginBottom: 12,
+    boxSizing: 'border-box' as const,
   },
   feedDot: {
     width: 8,
