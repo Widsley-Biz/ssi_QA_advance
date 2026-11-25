@@ -830,7 +830,8 @@ examsRouter.get('/admin/exams/:examId', requireRole('board'), async (req, res) =
   const examId = req.params.examId;
   const exam = (
     await pool.query(
-      `SELECT id, name, group_name, is_published, opens_at, closes_at, max_attempts, materials
+      `SELECT id, name, group_name, is_published, opens_at, closes_at, max_attempts, materials,
+              (SELECT count(*) FROM exam_attempts WHERE exam_id = $1 AND schedule_id IS NULL AND status = 'submitted')::int AS attempt_count
          FROM exams WHERE id = $1`,
       [examId],
     )
@@ -964,6 +965,11 @@ examsRouter.get('/admin/exams/:examId/schedules', requireRole('board'), async (r
     `SELECT s.id, s.label, s.opens_at, s.closes_at, s.max_attempts,
             (SELECT count(*) FROM exam_schedule_targets t WHERE t.schedule_id = s.id)::int AS target_count,
             (SELECT count(*) FROM exam_attempts a WHERE a.schedule_id = s.id AND a.status = 'submitted')::int AS attempt_count,
+            -- 削除可否はステータス問わず全件で判定する(DELETEエンドポイントと同じ基準)。
+            -- attempt_countは「受験済」の表示用で提出済みだけを数えるため、
+            -- 受験中(in_progress)の記録があるのに「受験済0件」のまま削除がブロックされる
+            -- ことがある。一覧側にdeletableを持たせて一致させる
+            (SELECT count(*) FROM exam_attempts a WHERE a.schedule_id = s.id) = 0 AS deletable,
             (s.closes_at IS NOT NULL AND s.closes_at <= now()) AS is_past
        FROM exam_schedules s
       WHERE s.exam_id = $1
@@ -971,6 +977,47 @@ examsRouter.get('/admin/exams/:examId/schedules', requireRole('board'), async (r
     [examId],
   );
   res.json(rows);
+});
+
+/**
+ * 管理者向け：複数予定(exam_schedules)が1件も無い試験の「予定」詳細(対象者ロスター・結果一覧)。
+ * exam_targets + exam_attempts(schedule_id IS NULL)から組み立てる。
+ * 「予定」一覧UIは複数予定モードかどうかを意識させず常に1件以上の予定を見せたいため、
+ * schedules.length===0のときはこちらを叩く(ui側で分岐)
+ */
+examsRouter.get('/admin/exams/:examId/schedule-legacy-results', requireRole('board'), async (req, res) => {
+  const examId = req.params.examId;
+  const exam = (await pool.query('SELECT id FROM exams WHERE id = $1', [examId])).rows[0];
+  if (!exam) return res.status(404).json({ error: 'exam not found' });
+
+  const { rows: targetEmails } = await pool.query(
+    'SELECT email FROM exam_targets WHERE exam_id = $1 ORDER BY email',
+    [examId],
+  );
+
+  const { rows: members } = await pool.query(
+    `WITH best AS (
+       SELECT DISTINCT ON (a.user_id) a.user_id, a.id AS attempt_id, a.status,
+              a.earned_points, a.total_points, a.passed, a.submitted_at
+         FROM exam_attempts a WHERE a.exam_id = $1 AND a.schedule_id IS NULL
+        ORDER BY a.user_id, a.earned_points DESC NULLS LAST, a.submitted_at DESC NULLS LAST
+     )
+     SELECT pr.id AS user_id, pr.email, pr.display_name,
+            b.attempt_id, b.status, b.earned_points, b.total_points, b.passed, b.submitted_at
+       FROM profiles pr
+       LEFT JOIN best b ON b.user_id = pr.id
+      WHERE ($2::int = 0 AND b.attempt_id IS NOT NULL)
+         OR ($2::int > 0 AND pr.email = ANY($3::text[]))
+      ORDER BY pr.display_name`,
+    [examId, targetEmails.length, targetEmails.map((t) => t.email)],
+  );
+
+  res.json({
+    exam_id: examId,
+    target_count: targetEmails.length,
+    target_emails: targetEmails.map((t) => t.email),
+    members,
+  });
 });
 
 /** 管理者向け：予定1件の詳細（対象者ロスター・結果一覧）。クリックして開く画面用 */
@@ -1159,11 +1206,18 @@ examsRouter.delete('/admin/exams/:examId/schedules/:scheduleId', requireRole('bo
   ).rows[0];
   if (!schedule) return res.status(404).json({ error: 'schedule not found' });
 
-  const attemptCount = (
-    await pool.query('SELECT count(*)::int AS n FROM exam_attempts WHERE schedule_id = $1', [scheduleId])
-  ).rows[0].n;
-  if (attemptCount > 0) {
-    return res.status(409).json({ error: 'この予定には受験記録があるため削除できません' });
+  const { rows: attemptRows } = await pool.query(
+    `SELECT count(*) FILTER (WHERE status = 'submitted')   AS submitted,
+            count(*) FILTER (WHERE status = 'in_progress') AS in_progress
+       FROM exam_attempts WHERE schedule_id = $1`,
+    [scheduleId],
+  );
+  const submitted = Number(attemptRows[0].submitted);
+  const inProgress = Number(attemptRows[0].in_progress);
+  if (submitted + inProgress > 0) {
+    return res.status(409).json({
+      error: `この予定には受験記録(提出済み${submitted}件・受験中${inProgress}件)があるため削除できません`,
+    });
   }
 
   const totalCount = (

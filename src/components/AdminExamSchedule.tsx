@@ -6,6 +6,7 @@ import {
   putAdminExamTargets,
   listAdminExamSchedules,
   getAdminExamScheduleDetail,
+  getAdminExamLegacyResults,
   createAdminExamSchedule,
   updateAdminExamSchedule,
   deleteAdminExamSchedule,
@@ -20,6 +21,13 @@ const DEEP_BLUE = '#03202F';
 const CYAN = '#3DB7E4';
 const SEA_GREEN = '#50DAB0';
 const MAGENTA = '#E21776';
+
+/**
+ * 複数予定(exam_schedules)が1件も無い試験も、UI上は常に1件以上の「予定」が
+ * 見える状態にするための、レガシー予定(exams自体のopens_at等)を表す疑似ID。
+ * 実際のexam_schedules.idは正の整数(bigint identity)なので衝突しない。
+ */
+const LEGACY_SCHEDULE_ID = -1;
 
 /**
  * datetime-local(日本時間として入力・表示する文字列) ⇄ ISO文字列(UTC) の変換。
@@ -164,7 +172,7 @@ export default function AdminExamSchedule() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [originalEmailCount, setOriginalEmailCount] = useState(0);
-  const [memberQuery, setMemberQuery] = useState('');
+  const [legacyAttemptCount, setLegacyAttemptCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -178,6 +186,8 @@ export default function AdminExamSchedule() {
   const [schedulesLoading, setSchedulesLoading] = useState(false);
   const [scheduleFormOpen, setScheduleFormOpen] = useState(false);
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
+  /** 新規予定をどの試験に作るか。既存予定の編集時は対象試験を変更できない(読み取り専用表示) */
+  const [targetExamId, setTargetExamId] = useState('');
   const [scheduleLabel, setScheduleLabel] = useState('');
   const [scheduleOpensAt, setScheduleOpensAt] = useState('');
   const [scheduleClosesAt, setScheduleClosesAt] = useState('');
@@ -245,6 +255,7 @@ export default function AdminExamSchedule() {
         setMaxAttempts(detail.max_attempts != null ? String(detail.max_attempts) : '');
         setSelectedEmails(new Set(detail.target_emails));
         setOriginalEmailCount(detail.target_emails.length);
+        setLegacyAttemptCount(detail.attempt_count);
       } catch {
         setError('設定の取得に失敗しました');
       } finally {
@@ -254,14 +265,11 @@ export default function AdminExamSchedule() {
     })();
   }, [examId]);
 
-  const groupedMembers = useMemo(() => groupMembers(profiles, teams, memberQuery), [profiles, teams, memberQuery]);
   const scheduleGroupedMembers = useMemo(
     () => groupMembers(profiles, teams, scheduleMemberQuery),
     [profiles, teams, scheduleMemberQuery],
   );
 
-  const toggleMember = (email: string) => toggleSetMember(setSelectedEmails, email);
-  const toggleGroup = (members: Profile[], selectAll: boolean) => toggleSetGroup(setSelectedEmails, members, selectAll);
   const toggleScheduleMember = (email: string) => toggleSetMember(setScheduleSelectedEmails, email);
   const toggleScheduleGroup = (members: Profile[], selectAll: boolean) =>
     toggleSetGroup(setScheduleSelectedEmails, members, selectAll);
@@ -292,33 +300,10 @@ export default function AdminExamSchedule() {
     }
   };
 
-  const handleSaveTargets = async () => {
-    const emails = [...selectedEmails];
-
-    if (emails.length === 0 && originalEmailCount > 0 && isPublished) {
-      const ok = confirm(
-        '対象者を1人も登録しない状態で保存すると、この試験は「全員公開」に戻ります。よろしいですか？',
-      );
-      if (!ok) return;
-    }
-
-    setSaving(true);
-    setFeedback('');
-    setError('');
-    try {
-      const res = await putAdminExamTargets(examId, emails);
-      setOriginalEmailCount(res.emails.length);
-      setFeedback(`対象者を保存しました（${res.emails.length}名）`);
-      await loadExams();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存に失敗しました');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const resetScheduleForm = () => {
     setEditingScheduleId(null);
+    setTargetExamId('');
     setScheduleLabel('');
     setScheduleOpensAt('');
     setScheduleClosesAt('');
@@ -332,19 +317,30 @@ export default function AdminExamSchedule() {
     resetScheduleForm();
     setViewingScheduleId(null);
     setScheduleDetail(null);
+    setFeedback('');
+    setError('');
     setScheduleFormOpen(true);
+    setTargetExamId(examId);
   };
 
   const openEditScheduleForm = async (s: ExamScheduleSummary) => {
     resetScheduleForm();
     setViewingScheduleId(null);
     setScheduleDetail(null);
+    setFeedback('');
+    setError('');
     setScheduleFormOpen(true);
+    setTargetExamId(examId);
     setEditingScheduleId(s.id);
     setScheduleLabel(s.label);
     setScheduleOpensAt(toInputValue(s.opens_at));
     setScheduleClosesAt(toInputValue(s.closes_at));
     setScheduleMaxAttempts(s.max_attempts != null ? String(s.max_attempts) : '');
+    if (s.id === LEGACY_SCHEDULE_ID) {
+      // レガシー予定の対象者は既に取得済み(ページ読み込み時のgetAdminExamSchedule)
+      setScheduleSelectedEmails(new Set(selectedEmails));
+      return;
+    }
     if (s.target_count > 0) {
       try {
         const detail = await getAdminExamScheduleDetail(examId, s.id);
@@ -366,18 +362,49 @@ export default function AdminExamSchedule() {
     setScheduleSaving(true);
     setScheduleFormError('');
     try {
-      const body = {
-        label: scheduleLabel,
-        opens_at: fromInputValue(scheduleOpensAt),
-        closes_at: fromInputValue(scheduleClosesAt),
-        max_attempts: scheduleMaxAttempts.trim() ? Number(scheduleMaxAttempts) : null,
-        emails,
-      };
-      if (editingScheduleId != null) await updateAdminExamSchedule(examId, editingScheduleId, body);
-      else await createAdminExamSchedule(examId, body);
+      const opensAtIso = fromInputValue(scheduleOpensAt);
+      const closesAtIso = fromInputValue(scheduleClosesAt);
+      const maxAttemptsNum = scheduleMaxAttempts.trim() ? Number(scheduleMaxAttempts) : null;
+
+      if (editingScheduleId === LEGACY_SCHEDULE_ID) {
+        // レガシー予定の編集は、これまで通りexams自体のカラム(putAdminExamSchedule)と
+        // exam_targets(putAdminExamTargets)を更新する。複数予定への移行は「予定を追加」で行う
+        await putAdminExamSchedule(examId, {
+          is_published: isPublished,
+          opens_at: opensAtIso,
+          closes_at: closesAtIso,
+          max_attempts: maxAttemptsNum,
+        });
+        await putAdminExamTargets(examId, emails);
+        setOpensAt(scheduleOpensAt);
+        setClosesAt(scheduleClosesAt);
+        setMaxAttempts(scheduleMaxAttempts);
+        setSelectedEmails(new Set(emails));
+        setOriginalEmailCount(emails.length);
+      } else {
+        const body = {
+          label: scheduleLabel,
+          opens_at: opensAtIso,
+          closes_at: closesAtIso,
+          max_attempts: maxAttemptsNum,
+          emails,
+        };
+        if (editingScheduleId != null) {
+          await updateAdminExamSchedule(examId, editingScheduleId, body);
+        } else {
+          // 新規作成のみ対象試験を選べる(既存予定の試験移動はこのUIでは未対応)
+          await createAdminExamSchedule(targetExamId || examId, body);
+        }
+      }
+      const switchedExamId = editingScheduleId == null && targetExamId && targetExamId !== examId;
       setScheduleFormOpen(false);
       resetScheduleForm();
-      await loadSchedules(examId);
+      await loadExams();
+      if (switchedExamId) {
+        setExamId(targetExamId); // examId変更のuseEffectが予定一覧・詳細を読み直す
+      } else {
+        await loadSchedules(examId);
+      }
       setFeedback('予定を保存しました');
     } catch (err) {
       setScheduleFormError(err instanceof Error ? err.message : '保存に失敗しました');
@@ -387,11 +414,15 @@ export default function AdminExamSchedule() {
   };
 
   const handleDeleteSchedule = async (s: ExamScheduleSummary) => {
+    if (s.id === LEGACY_SCHEDULE_ID) return; // 削除ボタン自体を出していないが念のため
+    setFeedback('');
+    setError('');
     const ok = confirm(`予定「${s.label || '(ラベル未設定)'}」を削除します。よろしいですか？`);
     if (!ok) return;
     try {
       await deleteAdminExamSchedule(examId, s.id);
       await loadSchedules(examId);
+      await loadExams();
       setFeedback('予定を削除しました');
     } catch (err) {
       setError(err instanceof Error ? err.message : '削除に失敗しました');
@@ -400,6 +431,7 @@ export default function AdminExamSchedule() {
 
   const openScheduleDetail = async (s: ExamScheduleSummary) => {
     setScheduleFormOpen(false);
+    setFeedback('');
     if (viewingScheduleId === s.id) {
       setViewingScheduleId(null);
       setScheduleDetail(null);
@@ -408,8 +440,20 @@ export default function AdminExamSchedule() {
     setViewingScheduleId(s.id);
     setScheduleDetail(null);
     setScheduleDetailLoading(true);
+    setError('');
     try {
-      setScheduleDetail(await getAdminExamScheduleDetail(examId, s.id));
+      if (s.id === LEGACY_SCHEDULE_ID) {
+        const legacy = await getAdminExamLegacyResults(examId);
+        setScheduleDetail({
+          exam_id: legacy.exam_id,
+          schedule: { id: LEGACY_SCHEDULE_ID, label: s.label, opens_at: s.opens_at, closes_at: s.closes_at, max_attempts: s.max_attempts },
+          target_count: legacy.target_count,
+          target_emails: legacy.target_emails,
+          members: legacy.members,
+        });
+      } else {
+        setScheduleDetail(await getAdminExamScheduleDetail(examId, s.id));
+      }
     } catch {
       setError('予定の詳細取得に失敗しました');
     } finally {
@@ -417,9 +461,26 @@ export default function AdminExamSchedule() {
     }
   };
 
-  const inScheduleMode = schedules.length > 0;
-  const upcomingSchedules = schedules.filter((s) => !s.is_past);
-  const pastSchedules = schedules.filter((s) => s.is_past);
+  // 複数予定(exam_schedules)が1件も無い試験でも、UIは常に1件以上の「予定」を
+  // 見せる(レガシー予定を疑似的な1件として合成する)。これにより管理者は
+  // 「単一予定」と「複数予定」の違いを意識せず、同じ一覧・編集・結果表示を使える
+  const legacyVirtualRow: ExamScheduleSummary = {
+    id: LEGACY_SCHEDULE_ID,
+    label: '予定',
+    opens_at: fromInputValue(opensAt),
+    closes_at: fromInputValue(closesAt),
+    max_attempts: maxAttempts.trim() ? Number(maxAttempts) : null,
+    target_count: originalEmailCount,
+    attempt_count: legacyAttemptCount,
+    deletable: false,
+    is_past: (() => {
+      const c = fromInputValue(closesAt);
+      return c != null && new Date(c) <= new Date();
+    })(),
+  };
+  const unifiedSchedules = schedules.length > 0 ? schedules : [legacyVirtualRow];
+  const upcomingSchedules = unifiedSchedules.filter((s) => !s.is_past);
+  const pastSchedules = unifiedSchedules.filter((s) => s.is_past);
 
   if (loading) return <div style={{ padding: 24, color: '#999' }}>読み込み中...</div>;
 
@@ -439,10 +500,6 @@ export default function AdminExamSchedule() {
             <tr>
               <th style={styles.th}>試験</th>
               <th style={styles.th}>公開</th>
-              <th style={styles.th}>開始(日本時間)</th>
-              <th style={styles.th}>終了(日本時間)</th>
-              <th style={styles.th}>回数上限</th>
-              <th style={styles.th}>対象者</th>
             </tr>
           </thead>
           <tbody>
@@ -458,14 +515,13 @@ export default function AdminExamSchedule() {
                     {e.is_published ? '公開中' : '非公開'}
                   </span>
                 </td>
-                <td style={styles.td}>{e.opens_at ? formatJst(e.opens_at) : '—'}</td>
-                <td style={styles.td}>{e.closes_at ? formatJst(e.closes_at) : '—'}</td>
-                <td style={styles.td}>{e.max_attempts ?? '無制限'}</td>
-                <td style={styles.td}>{e.target_count > 0 ? `${e.target_count}名` : '全員'}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        <p style={{ ...styles.hint, marginTop: 8, marginBottom: 0 }}>
+          日程・回数上限・対象者は試験ごとに複数の予定を持てるため、下の「予定」で確認・編集してください。
+        </p>
       </div>
 
       {detailLoading ? (
@@ -473,9 +529,7 @@ export default function AdminExamSchedule() {
       ) : (
         <>
           <div style={styles.card}>
-            <h3 style={styles.cardTitle}>
-              {inScheduleMode ? '公開状態' : '単一予定（互換用・1つだけ予定する場合はこちらで十分です）'}
-            </h3>
+            <h3 style={styles.cardTitle}>公開状態</h3>
             <label style={styles.publishRow}>
               <input
                 type="checkbox"
@@ -486,85 +540,27 @@ export default function AdminExamSchedule() {
                 {isPublished ? '公開中' : '非公開'}
               </span>
               <span style={{ fontSize: 12, color: '#888' }}>
-                （非公開の間はboard以外に一切表示されません）
+                （非公開の間はboard以外に一切表示されません。日程・対象者は下の「予定」で設定します）
               </span>
             </label>
-            {inScheduleMode && (
-              <p style={{ ...styles.hint, marginTop: 0, marginBottom: 14 }}>
-                この試験は下の「複数予定」で日程・受験回数・対象者を管理しています
-                （単一予定の日程欄は使われません）。
-              </p>
-            )}
-            {!inScheduleMode && (
-              <div style={styles.row}>
-                <div style={styles.field}>
-                  <label style={styles.label}>開始日時（日本時間・空欄=常時公開）</label>
-                  <input
-                    type="datetime-local"
-                    value={opensAt}
-                    onChange={(e) => setOpensAt(e.target.value)}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.field}>
-                  <label style={styles.label}>終了日時（日本時間・空欄=常時公開・結果は提出後すぐ表示）</label>
-                  <input
-                    type="datetime-local"
-                    value={closesAt}
-                    onChange={(e) => setClosesAt(e.target.value)}
-                    style={styles.input}
-                  />
-                </div>
-                <div style={styles.field}>
-                  <label style={styles.label}>受験回数上限（空欄=無制限）</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={maxAttempts}
-                    onChange={(e) => setMaxAttempts(e.target.value)}
-                    style={styles.input}
-                    placeholder="例: 1"
-                  />
-                </div>
-              </div>
-            )}
             <button style={styles.saveBtn} disabled={saving} onClick={handleSaveSchedule}>
-              {saving ? '保存中...' : inScheduleMode ? '公開状態を保存' : '公開状態・日程・受験回数を保存'}
+              {saving ? '保存中...' : '公開状態を保存'}
             </button>
           </div>
-
-          {!inScheduleMode && (
-            <div style={styles.card}>
-              <h3 style={styles.cardTitle}>
-                単一予定の対象者（{selectedEmails.size === 0 ? '未選択＝全員対象' : `${selectedEmails.size}名選択中`}）
-              </h3>
-              <MemberPicker
-                groupedMembers={groupedMembers}
-                selectedEmails={selectedEmails}
-                query={memberQuery}
-                onQueryChange={setMemberQuery}
-                onToggleMember={toggleMember}
-                onToggleGroup={toggleGroup}
-              />
-              <button style={{ ...styles.saveBtn, marginTop: 14 }} disabled={saving} onClick={handleSaveTargets}>
-                {saving ? '保存中...' : '対象者を保存'}
-              </button>
-            </div>
-          )}
 
           <div style={styles.card}>
             <div style={styles.scheduleHeadRow}>
               <h3 style={{ ...styles.cardTitle, margin: 0 }}>
-                複数予定（同じ試験を複数グループ・複数日程で同時に走らせたい場合）
+                予定（{schedulableExams.find((e) => e.id === examId)?.name ?? '試験未選択'}）
               </h3>
               <button style={styles.addScheduleBtn} onClick={openNewScheduleForm}>
                 ＋ 新しい予定を追加
               </button>
             </div>
             <p style={styles.hint}>
-              ここに1件でも予定を追加すると、この試験は上の「単一予定」ではなく、ここに並ぶ予定だけで
-              公開状態・対象者・受験回数が決まるようになります（既存の設定は1件目の予定として自動的に
-              引き継がれます）。クリックすると対象者と試験結果が見れます。
+              クリックすると対象者と試験結果が見れます。「編集」から日程・受験回数上限・対象者を
+              まとめて変更できます。同じ試験を複数グループ・複数日程で同時に走らせたい場合は
+              「＋ 新しい予定を追加」でもう1件追加してください。
             </p>
 
             {schedulesLoading ? (
@@ -578,15 +574,40 @@ export default function AdminExamSchedule() {
                     </h4>
                     <div style={styles.row}>
                       <div style={styles.field}>
-                        <label style={styles.label}>ラベル（管理用。例: 2026年12月 Aグループ）</label>
-                        <input
-                          value={scheduleLabel}
-                          onChange={(e) => setScheduleLabel(e.target.value)}
-                          style={styles.input}
-                          placeholder="例: 2026年12月 Aグループ"
-                        />
+                        <label style={styles.label}>対象試験</label>
+                        {editingScheduleId == null ? (
+                          <select
+                            value={targetExamId}
+                            onChange={(e) => setTargetExamId(e.target.value)}
+                            style={styles.select}
+                          >
+                            {schedulableExams.map((e) => (
+                              <option key={e.id} value={e.id}>
+                                {e.group_name ? `${e.group_name} / ` : ''}{e.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div style={{ ...styles.input, background: '#f5f5f5', color: '#888' }}>
+                            {schedulableExams.find((e) => e.id === examId)?.name ?? examId}
+                            <span style={{ marginLeft: 8, fontSize: 11 }}>(試験の変更はできません)</span>
+                          </div>
+                        )}
                       </div>
                     </div>
+                    {editingScheduleId !== LEGACY_SCHEDULE_ID && (
+                      <div style={styles.row}>
+                        <div style={styles.field}>
+                          <label style={styles.label}>ラベル（管理用。例: 2026年12月 Aグループ）</label>
+                          <input
+                            value={scheduleLabel}
+                            onChange={(e) => setScheduleLabel(e.target.value)}
+                            style={styles.input}
+                            placeholder="例: 2026年12月 Aグループ"
+                          />
+                        </div>
+                      </div>
+                    )}
                     <div style={styles.row}>
                       <div style={styles.field}>
                         <label style={styles.label}>開始日時（日本時間・空欄=常時公開）</label>
@@ -655,6 +676,7 @@ export default function AdminExamSchedule() {
                   viewingScheduleId={viewingScheduleId}
                   scheduleDetail={scheduleDetail}
                   scheduleDetailLoading={scheduleDetailLoading}
+                  canDeleteAny={schedules.length > 1}
                   onOpen={openScheduleDetail}
                   onEdit={openEditScheduleForm}
                   onDelete={handleDeleteSchedule}
@@ -666,6 +688,7 @@ export default function AdminExamSchedule() {
                   viewingScheduleId={viewingScheduleId}
                   scheduleDetail={scheduleDetail}
                   scheduleDetailLoading={scheduleDetailLoading}
+                  canDeleteAny={schedules.length > 1}
                   onOpen={openScheduleDetail}
                   onEdit={openEditScheduleForm}
                   onDelete={handleDeleteSchedule}
@@ -690,6 +713,7 @@ function ScheduleList({
   viewingScheduleId,
   scheduleDetail,
   scheduleDetailLoading,
+  canDeleteAny,
   onOpen,
   onEdit,
   onDelete,
@@ -700,6 +724,8 @@ function ScheduleList({
   viewingScheduleId: number | null;
   scheduleDetail: ExamScheduleDetail | null;
   scheduleDetailLoading: boolean;
+  /** 複数予定モードで実際の予定が2件以上あるか(最後の1件は削除不可のため) */
+  canDeleteAny: boolean;
   onOpen: (s: ExamScheduleSummary) => void;
   onEdit: (s: ExamScheduleSummary) => void;
   onDelete: (s: ExamScheduleSummary) => void;
@@ -726,7 +752,9 @@ function ScheduleList({
               </div>
               <div style={styles.scheduleRowActions} onClick={(e) => e.stopPropagation()}>
                 <button style={styles.groupToggleBtn} onClick={() => onEdit(s)}>編集</button>
-                <button style={{ ...styles.groupToggleBtn, color: MAGENTA }} onClick={() => onDelete(s)}>削除</button>
+                {s.id !== LEGACY_SCHEDULE_ID && s.deletable && canDeleteAny && (
+                  <button style={{ ...styles.groupToggleBtn, color: MAGENTA }} onClick={() => onDelete(s)}>削除</button>
+                )}
               </div>
             </div>
 
