@@ -750,18 +750,20 @@ export default function BoardView() {
                   管理者(board)は集計対象外です。対象者限定の試験で対象外のメンバーは一覧から除外されます
                   {examResultExcludedCount > 0 && `(現在のチーム絞り込みで${examResultExcludedCount}名が対象外)`}。
                 </p>
-                <div style={{ marginBottom: 12 }}>
+                <div style={styles.examResultControls}>
                   <select
                     value={activeExamResultId}
                     onChange={(e) => selectExamResult(e.target.value)}
-                    style={styles.select}
+                    style={{ ...styles.select, flex: '1 1 320px' }}
                   >
                     {certificationExams.map((e) => (
                       <option key={e.id} value={e.id}>{e.group_name ? `${e.group_name} / ` : ''}{e.name}</option>
                     ))}
                   </select>
+                  <div style={{ flex: '1 1 260px' }}>
+                    <SectionSearch value={examResultSort.query} onChange={examResultSort.setQuery} />
+                  </div>
                 </div>
-                <SectionSearch value={examResultSort.query} onChange={examResultSort.setQuery} />
                 <div style={styles.scrollBox}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
@@ -1139,6 +1141,13 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#888',
     marginBottom: 14,
     lineHeight: 1.6,
+  },
+  examResultControls: {
+    display: 'flex',
+    gap: 12,
+    alignItems: 'center',
+    flexWrap: 'wrap' as const,
+    marginBottom: 12,
   },
   collapseToggle: {
     cursor: 'pointer',
