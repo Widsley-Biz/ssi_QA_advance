@@ -843,6 +843,12 @@ examsRouter.get('/exams/report', requireRole('board'), async (_req, res) => {
          FROM exam_attempts a
         WHERE a.status = 'submitted'
         ORDER BY a.user_id, a.exam_id, a.earned_points DESC, a.submitted_at DESC
+     ),
+     attempt_counts AS (
+       SELECT user_id, exam_id, count(*)::int AS attempt_count
+         FROM exam_attempts
+        WHERE status = 'submitted'
+        GROUP BY user_id, exam_id
      )
      SELECT p.id AS user_id, p.display_name, p.team_id,
             e.id AS exam_id, e.name AS exam_name, e.group_name, e.sort_order,
@@ -852,10 +858,12 @@ examsRouter.get('/exams/report', requireRole('board'), async (_req, res) => {
               -- レガシー予定：従来通りexam_targetsだけで判定
               ELSE COALESCE(t.legacy_total, 0) > 0 AND COALESCE(t.legacy_mine, 0) = 0
             END AS excluded,
-            ba.attempt_id, ba.earned_points, ba.total_points, ba.passed, ba.submitted_at
+            ba.attempt_id, ba.earned_points, ba.total_points, ba.passed, ba.submitted_at,
+            COALESCE(ac.attempt_count, 0) AS attempt_count
        FROM profiles p
       CROSS JOIN exams e
        LEFT JOIN best_attempts ba ON ba.user_id = p.id AND ba.exam_id = e.id
+       LEFT JOIN attempt_counts ac ON ac.user_id = p.id AND ac.exam_id = e.id
        LEFT JOIN LATERAL (
              SELECT
                (SELECT count(*) FROM exam_targets WHERE exam_id = e.id)::int AS legacy_total,
