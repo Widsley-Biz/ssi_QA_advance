@@ -8,6 +8,7 @@ import { invitationsRouter } from './routes/invitations.js';
 import { certificationsRouter } from './routes/certifications.js';
 import { examsRouter } from './routes/exams.js';
 import { dashboardRouter } from './routes/dashboard.js';
+import { mfExpenseIntakeRouter } from './routes/mfExpenseIntake.js';
 
 const app = express();
 app.use(cors({ origin: (process.env.CORS_ORIGIN ?? '').split(',').filter(Boolean) }));
@@ -15,6 +16,10 @@ app.use(express.json());
 
 // 注: /healthz はGCP側で予約済みのパスでCloud Runまで到達しないため使わない
 app.get('/health', (_req, res) => res.status(200).send('ok'));
+
+// ZapierからのMF経費連携Webhook。Firebase IDトークンを持たないため、
+// requireAuthより前にマウントし、ルート内部で共有シークレットのみを検証する。
+app.use(mfExpenseIntakeRouter);
 
 app.use(requireAuth);
 

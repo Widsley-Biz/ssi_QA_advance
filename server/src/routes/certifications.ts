@@ -29,7 +29,7 @@ certificationsRouter.post('/certifications', requireRole('board'), async (req, r
 });
 
 certificationsRouter.patch('/certifications/:id', requireRole('board'), async (req, res) => {
-  const allowed = ['name', 'description', 'level', 'category', 'reward', 'sort_order', 'active'];
+  const allowed = ['name', 'description', 'level', 'category', 'reward', 'sort_order', 'active', 'aliases'];
   const fields = Object.keys(req.body).filter(k => allowed.includes(k));
   if (fields.length === 0) {
     res.status(204).end();
@@ -78,9 +78,24 @@ certificationsRouter.get('/user_certifications', async (req, res) => {
   res.json(rows);
 });
 
+/** confirmed_byが付いている行(MF経費自動反映 or 管理者確定済み)は本人のセルフ申告操作の対象外にする。 */
+async function isConfirmedByOthers(userId: string, certificationId: number | string): Promise<boolean> {
+  const { rows } = await pool.query<{ confirmed_by: string | null }>(
+    'SELECT confirmed_by FROM user_certifications WHERE user_id = $1 AND certification_id = $2',
+    [userId, certificationId],
+  );
+  return rows[0]?.confirmed_by != null;
+}
+
 certificationsRouter.put('/user_certifications', async (req, res) => {
   const p = req.profile!;
   const { certification_id, status } = req.body as { certification_id: number; status: string };
+
+  if (await isConfirmedByOthers(p.id, certification_id)) {
+    res.status(403).json({ error: 'confirmed by MF expense or an admin; cannot self-edit' });
+    return;
+  }
+
   await pool.query(
     `INSERT INTO user_certifications (user_id, certification_id, status, updated_at)
      VALUES ($1, $2, $3, now())
@@ -92,9 +107,72 @@ certificationsRouter.put('/user_certifications', async (req, res) => {
 
 certificationsRouter.delete('/user_certifications/:certificationId', async (req, res) => {
   const p = req.profile!;
+
+  if (await isConfirmedByOthers(p.id, req.params.certificationId)) {
+    res.status(403).json({ error: 'confirmed by MF expense or an admin; cannot self-edit' });
+    return;
+  }
+
   await pool.query(
     'DELETE FROM user_certifications WHERE user_id = $1 AND certification_id = $2',
     [p.id, req.params.certificationId],
   );
   res.status(204).end();
+});
+
+/**
+ * board/system専用: 他メンバーの資格取得状況を確定させる。
+ * MF経費連携の自動反映(confirmedBy='system:mf-expense')と、
+ * 管理画面からの手動確定(confirmedBy=操作したboardユーザーのid)の両方から呼ぶ。
+ */
+export async function setCertificationAcquired(
+  userId: string,
+  certificationId: number,
+  opts: { confirmedBy: string; acquiredAt?: string | null; mfApplicationUrl?: string | null },
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO user_certifications
+       (user_id, certification_id, status, acquired_at, confirmed_by, mf_application_url, updated_at)
+     VALUES ($1, $2, 'acquired', COALESCE($3::date, CURRENT_DATE), $4, $5, now())
+     ON CONFLICT (user_id, certification_id) DO UPDATE SET
+       status = 'acquired',
+       acquired_at = COALESCE($3::date, CURRENT_DATE),
+       confirmed_by = $4,
+       mf_application_url = $5,
+       updated_at = now()`,
+    [userId, certificationId, opts.acquiredAt ?? null, opts.confirmedBy, opts.mfApplicationUrl ?? null],
+  );
+}
+
+// board限定: MF経費連携で「要確認」になった申請を、管理者が手動で確定する
+certificationsRouter.put('/admin/user_certifications', requireRole('board'), async (req, res) => {
+  const p = req.profile!;
+  const { user_id, certification_id, acquired_at, mf_application_url } = req.body as {
+    user_id?: string;
+    certification_id?: number;
+    acquired_at?: string;
+    mf_application_url?: string;
+  };
+  if (!user_id || !certification_id) {
+    res.status(400).json({ error: 'user_id and certification_id are required' });
+    return;
+  }
+  await setCertificationAcquired(user_id, certification_id, {
+    confirmedBy: p.id,
+    acquiredAt: acquired_at ?? null,
+    mfApplicationUrl: mf_application_url ?? null,
+  });
+  res.status(204).end();
+});
+
+// board限定: MF経費連携ログの一覧(新しい順)
+certificationsRouter.get('/mf-expense-intake-log', requireRole('board'), async (_req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, received_at, raw_subject, parsed, matched_user_id, matched_certification_id,
+            action_taken, mf_application_url
+     FROM mf_expense_intake_log
+     ORDER BY received_at DESC
+     LIMIT 200`,
+  );
+  res.json(rows);
 });
