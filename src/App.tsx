@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Header from './components/Header';
 import LoginPage from './components/LoginPage';
+import AuthLoadingScreen from './components/AuthLoadingScreen';
 import CourseSelect from './components/CourseSelect';
 import CourseIntro from './components/CourseIntro';
 import QuizFlow from './components/QuizFlow';
@@ -20,7 +21,15 @@ import ExamGuide from './components/ExamGuide';
 import MaterialViewer from './components/MaterialViewer';
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+
+  // signInWithRedirectから戻った直後など、getRedirectResult/onAuthStateChanged/
+  // プロフィール取得が完了するまでの数秒間。ここでログイン画面を出してしまうと
+  // 一瞬ログインボタンが押せる状態に見えてしまい連打を誘発するため、
+  // 判定が終わるまでは専用のローディング画面を出す
+  if (loading) {
+    return <AuthLoadingScreen />;
+  }
 
   if (!user) {
     return (
