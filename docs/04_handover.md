@@ -9,7 +9,8 @@
 SSI事業部のスキル自己評価をExcelからWebアプリ化するプロジェクト。
 4コース（Academia/テスト自動化/マネジメント/セキュリティ）127スキル対応。
 
-**本番URL:** https://ssi-qa-advance-239789192031.asia-northeast1.run.app
+**本番URL:** https://skillcheck.widsley.site
+（Cloud Run生URL `https://ssi-qa-advance-239789192031.asia-northeast1.run.app` はログイン後の認証処理がOrigin不一致で壊れるため、アクセス用URLとして使わないこと。nginxで正規ドメインへ301リダイレクトされる。）
 **GitHub:** Widsley-Biz/ssi_QA_advance
 **Supabase:** https://azjrbizzkjvemeheoohg.supabase.co
 
@@ -165,7 +166,8 @@ npm run dev
 ### デプロイ（GCP Cloud Run）
 git pushするだけで自動デプロイ。手動コマンド不要。
 - GitHub push → Cloud Build自動ビルド → Cloud Runデプロイ
-- Service URL: https://ssi-qa-advance-239789192031.asia-northeast1.run.app
+- Service URL(内部/デプロイ確認用): https://ssi-qa-advance-239789192031.asia-northeast1.run.app
+- アクセス用の正規URLは https://skillcheck.widsley.site （上記1章参照）
 
 **注意:** `.env.production`にSupabaseの`VITE_SUPABASE_URL`と`VITE_SUPABASE_ANON_KEY`が設定されている必要がある。
 
